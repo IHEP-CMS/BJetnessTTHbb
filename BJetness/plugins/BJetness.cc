@@ -303,9 +303,9 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
     bool jetmatchedlepts = false;
     for(uint gl=0; gl<looseleps.size(); gl++) if(deltaR(looseleps[gl]->p4(),j.p4())<0.4) jetmatchedlepts = true;
     if(jetmatchedlepts){jet_pos++; continue;}
-    double csvcurrjet = j.bDiscriminator("newpfCombinedInclusiveSecondaryVertexV2BJetTags");
+    double csvcurrjet = j.bDiscriminator("pfCombinedInclusiveSecondaryVertexV2BJetTags");
     jet_csv_pos.push_back(make_pair(csvcurrjet,jet_pos));
-    double cmvacurrjet = j.bDiscriminator("newpfCombinedMVAV2BJetTags");
+    double cmvacurrjet = j.bDiscriminator("pfCombinedMVAV2BJetTags");
     jet_cmva_pos.push_back(make_pair(cmvacurrjet,jet_pos));
     //double jetprobjet = j.bDiscriminator("newpfJetProbabilityBJetTags");
     if(csvcurrjet>0.8) jetb_num++;
