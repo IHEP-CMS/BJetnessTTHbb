@@ -251,7 +251,17 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   //   First clean the jet according the TTHbb selection
   /////
   //Require a good vertex (This part has to be clarified (do we want the first PV to be a good one?))
-  if(vtx_h->empty()) return; // skip the event if no PV found
+  if(vtx_h->empty()){
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    iEvent.put(BJetnessValues,"BJetnessValue");
+    return; // skip the event if no PV found
+  }
   reco::VertexCollection::const_iterator firstgoodVertex = vtx_h->end();
   for(reco::VertexCollection::const_iterator it = vtx_h->begin(); it != firstgoodVertex; it++){
     if(isGoodVertex(*it)){
@@ -259,7 +269,17 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
       break;
     }
   }
-  if(firstgoodVertex == vtx_h->end()) return;
+  if(firstgoodVertex == vtx_h->end()){
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    BJetnessValues->push_back(-999);
+    iEvent.put(BJetnessValues,"BJetnessValue");
+    return;
+  }
   const reco::Vertex &PV = vtx_h->front(); //It still takes the first vertex 
   //Look for muons, electrons 
   vector<const reco::Candidate*> looseleps;
