@@ -146,6 +146,7 @@ class BJetness : public edm::stream::EDProducer<> {
     edm::EDGetTokenT<reco::VertexCollection> vtx_h_;
     edm::EDGetTokenT<edm::View<pat::Electron> > electron_pat_;
     edm::EDGetTokenT<edm::ValueMap<bool>  > elemvanontrig_;
+    edm::EDGetTokenT<edm::ValueMap<bool>  > electronTightIdMapToken_;
     edm::EDGetTokenT<edm::View<pat::Muon> > muon_h_;
     edm::EDGetTokenT<pat::JetCollection> jets_;
     edm::EDGetTokenT<double> rhopogHandle_;
@@ -171,15 +172,17 @@ class BJetness : public edm::stream::EDProducer<> {
     //Methods for the BJetness variables
     void get_bjetness_vars(
                            vector<pat::Jet> evtjets, const reco::Vertex& vtx, const TransientTrackBuilder& ttrkbuilder, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h,
-                           double& bjetnessFV_num_leps, double& bjetnessFV_npvTrkOVcollTrk, double& bjetnessFV_avip3d_val, double& bjetnessFV_avip3d_sig, double& bjetnessFV_avsip3d_sig, double& bjetnessFV_avip1d_sig
+                           double& bjetnessFV_num_leps, double& bjetnessFV_npvTrkOVcollTrk, double& bjetnessFV_pvTrkOVcollTrk, double& bjetnessFV_avip3d_val, double& bjetnessFV_avip3d_sig, double& bjetnessFV_avsip3d_val, double& bjetnessFV_avsip3d_sig, double& bjetnessFV_avip2d_val, double& bjetnessFV_avip2d_sig, double& bjetnessFV_avsip2d_val, double& bjetnessFV_avsip2d_sig, double& bjetnessFV_avip1d_val, double& bjetnessFV_avip1d_sig, double& bjetnessFV_avsip1d_val, double& bjetnessFV_avsip1d_sig, double& bjetnessFV_npvTrkOVpvTrk, double &bjetnessFV_npvPtOVcollPt, double &bjetnessFV_pvPtOVcollPt, double &bjetnessFV_npvPtOVpvPt
                           );
-    void get_bjetness_trkinfos(vector<pat::Jet> evtjets, const reco::Vertex& vtx, vector<Track>& jetchtrks, double& bjetness_num_pvtrks, double& bjetness_num_npvtrks, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h, double& bjetness_num_eles, double& bjetness_num_mus, vector<tuple<double, double, double> >& jetsdir);
+    void get_bjetness_trkinfos(vector<pat::Jet> evtjets, const reco::Vertex& vtx, vector<Track>& jetchtrks, double& bjetness_num_pvtrks, double& bjetness_num_npvtrks, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h, double& bjetness_num_eles, double& bjetness_num_mus, vector<tuple<double, double, double> >& jetsdir, vector<Track>& jetchtrkspv, vector<Track>& jetchtrksnpv);
     bool is_goodtrk(Track trk,const reco::Vertex& vtx);
     bool is_loosePOG_jetmuon(const pat::PackedCandidate &jcand, edm::Handle<edm::View<pat::Muon> > muon_h);
     bool is_softLep_jetelectron(const pat::PackedCandidate &jcand, edm::Handle<edm::View<pat::Electron> > electron_pat, const reco::Vertex& vtx);
+    bool is_vetoPOGNoIPNoIso_jetelectron(const pat::PackedCandidate &jcand, edm::Handle<edm::View<pat::Electron> > electron_pat);
     bool is_loosePOGNoIPNoIso_jetelectron(const pat::PackedCandidate &jcand, edm::Handle<edm::View<pat::Electron> > electron_pat, const reco::Vertex& vtx);
-    void get_avip3d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip3d_val, double& jetchtrks_avip3d_sig, double& jetchtrks_avsip3d_sig);
-    void get_avip1d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip1d_sig);
+    void get_avip3d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip3d_val, double& jetchtrks_avip3d_sig, double& jetchtrks_avsip3d_val, double& jetchtrks_avsip3d_sig);
+    void get_avip2d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip2d_val, double& jetchtrks_avip2d_sig, double& jetchtrks_avsip2d_val, double& jetchtrks_avsip2d_sig);
+    void get_avip1d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip1d_val, double& jetchtrks_avip1d_sig, double& jetchtrks_avsip1d_val, double& jetchtrks_avsip1d_sig);
     vector<TransientTrack> get_ttrks(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder);
 };
 //
@@ -189,6 +192,8 @@ BJetness::BJetness(const edm::ParameterSet& iConfig):
   vtx_h_(consumes<reco::VertexCollection>(iConfig.getParameter<edm::InputTag>("vertices"))),
   electron_pat_(consumes<edm::View<pat::Electron> >(iConfig.getParameter<edm::InputTag>("patElectrons"))),
   elemvanontrig_(consumes<edm::ValueMap<bool> >(iConfig.getParameter<edm::InputTag>("eleMVAnonTrigIdMap"))),
+  //electronMediumIdMapToken_(ic.consumes<edm::ValueMap<bool> >(iConfig.getParameter<edm::InputTag>("electronMediumIdMap"))),
+  electronTightIdMapToken_(consumes<edm::ValueMap<bool> >(iConfig.getParameter<edm::InputTag>("electronTightIdMap"))),
   muon_h_(consumes<edm::View<pat::Muon> >(iConfig.getParameter<edm::InputTag>("muons"))),
   jets_(consumes<pat::JetCollection >(iConfig.getParameter<edm::InputTag>("jets"))),
   rhopogHandle_(consumes<double>(edm::InputTag("fixedGridRhoFastjetAll"))),
@@ -245,6 +250,9 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   double rhoJER = *rhoJERHandle;
   edm::Handle<edm::ValueMap<bool>  > mvanontrig_id_decisions;
   iEvent.getByToken(elemvanontrig_, mvanontrig_id_decisions);
+  edm::Handle<edm::ValueMap<bool> > tight_id_decisions;
+  iEvent.getByToken(electronTightIdMapToken_, tight_id_decisions);
+
   edm::ESHandle<TransientTrackBuilder> ttrkbuilder;
   iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder",ttrkbuilder);
   /////
@@ -281,31 +289,41 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
     return;
   }
   const reco::Vertex &PV = vtx_h->front(); //It still takes the first vertex
+
+
   //Look for muons, electrons
   vector<const reco::Candidate*> looseleps;
   vector<const reco::Candidate*> tightleps;
-  //Muons
+
+
+  //================ Muons ======================
   for(const pat::Muon &mu : *muon_h){
     if(!is_loose_muon(mu,PV)) continue;
     looseleps.push_back((const reco::Candidate*)&mu);
     if(!is_tight_muon(mu,PV)) continue;
     tightleps.push_back((const reco::Candidate*)&mu);
-    //cout<<setw(20)<<"MuonFV pt,eta,phi"<<setw(20)<<mu.pt()<<setw(20)<<mu.eta()<<setw(20)<<mu.phi()<<endl;
   }
-  //Electrons
+  //====================================================
+
+
+
+  //================ Electrons ==================
+
   for(edm::View<pat::Electron>::const_iterator ele = electron_pat->begin(); ele != electron_pat->end(); ele++){
     const Ptr<pat::Electron> elPtr(electron_pat, ele - electron_pat->begin() );
-    //bool isPassMvatrig = (*mvatrig_id_decisions)[ elPtr ];
-    //if(!(is_loose_electron(*ele,rhopog) && isPassMvatrig)) continue;
-    bool isPassMvanontrig = (*mvanontrig_id_decisions)[ elPtr ];
-    if(!(isPassMvanontrig)) continue;
-    if(!(rel_iso_dbc_ele(*ele,rhopog)<0.15)) continue;
+    bool isPassEletrig = (*tight_id_decisions)[ elPtr ];
     const pat::Electron &lele = *ele;
+    if(!(isPassEletrig)) continue;
+    if(!(is_loose_electron(*ele,rhopog))) continue;
+    if(!(rel_iso_dbc_ele(*ele,rhopog)<0.15)) continue;
     looseleps.push_back((const reco::Candidate*)&lele);
-    if(!(is_tight_electron(*ele,rhopog) && isPassMvanontrig)) continue;
+    if(!(is_tight_electron(*ele,rhopog))) continue;
     tightleps.push_back((const reco::Candidate*)&lele);
-    //cout<<setw(20)<<"ElectronFV pt,eta,phi"<<setw(20)<<ele->pt()<<setw(20)<<ele->eta()<<setw(20)<<ele->phi()<<endl;
   }
+  //====================================================
+
+
+  // =================== Jets =========================
   //Get the good jets of the event
   //Iterate to access jet by decreasing b-tagging value
   int jet_pos = 0; //This counter helps to order jets
@@ -313,7 +331,6 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
                    //The definition of good jet in the event must be the same of the TTHbb analysis
                    //so that jet_num corresponds to the number of jets that define the categories in the TTHbb search
   int jetb_num = 0;
-  double jetpt0 = 0;
   vector<pair<double,int> > jet_csv_pos;
   vector<pair<double,int> > jet_cmva_pos;
   for(const pat::Jet &j : *jets){
@@ -327,15 +344,17 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
     jet_csv_pos.push_back(make_pair(csvcurrjet,jet_pos));
     double cmvacurrjet = j.bDiscriminator("pfCombinedMVAV2BJetTags");
     jet_cmva_pos.push_back(make_pair(cmvacurrjet,jet_pos));
-    //double jetprobjet = j.bDiscriminator("newpfJetProbabilityBJetTags");
-    if(csvcurrjet>0.8) jetb_num++;
-    if(jet_num==0) jetpt0 = jetpt;
+    if(csvcurrjet>0.8484) jetb_num++;
     jet_pos++;
     jet_num++;
   }
+  //=======================================================
+
   /////
   //   Select only TTHbb events (mainly lep sel)
   /////
+
+  //This selection should be changed for dilepton analysis.
   if(!(tightleps.size()==1 && looseleps.size()==1 && jet_num>=4 && jetb_num>=2)){
     BJetnessValues->push_back(-999);
     BJetnessValues->push_back(-999);
@@ -347,34 +366,45 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
     iEvent.put(BJetnessValues,"BJetnessValue");
     return;
   }
-  // BJetnessFV_isSingleLepton = 1;
-  //This selection is not really the dilepton one!
-  //Ele pT for lead is from tightleps (pT>30 GeV)
-  //Jet pT > 30 GeV (as in single lepton channel)
-  //if(tightleps.size()==1 && looseleps.size()==2 && jet_num>=3 && jetb_num>=2) BJetnessFV_isDoubleLepton = 1;
-  //if(!(BJetnessFV_isSingleLepton==1 || BJetnessFV_isDoubleLepton==1)) return;
+
   /////
   //   You need to provide as input the jets selected in the event (selection according to the TTHbb analysis),
   //   which have to be ordered by decreasing b-tagging value
   /////
+
   sort(jet_csv_pos.rbegin(), jet_csv_pos.rend());//Order by descreasing csv value
   if(jet_num!=0){
-    //cout<<"Num of jet is"<<setw(20)<<jet_num<<" "<<jetb_num<<endl;
     /////
-    //   From here on it starts to define the BJetness variables
-    //   Note that we exclude the jet with the highest CSV (start from jn=1 below) and consider up to maximum 6 jets in an event
+    //   Definition of BJetness variables
+    //   NOTE: Highest CSV jet excluded (start from jn=1 below) and consider up to 6th jet in an event (optimised for single lepton)
     /////
     vector<pat::Jet> evtjets; evtjets.clear();
-    int maxjetnum = 6; //This value has been chosen after optimisation
+    int maxjetnum = 6;
     if(jet_num<maxjetnum) maxjetnum = jet_num;
     for(int jn=1; jn<maxjetnum; jn++) evtjets.push_back((*jets)[jet_csv_pos[jn].second]);
     //Define the variables you want to access
     double bjetnessFV_num_leps        = -1;
     double bjetnessFV_npvTrkOVcollTrk = -1;
+    double bjetnessFV_pvTrkOVcollTrk = -1;
+    double bjetnessFV_npvTrkOVpvTrk =-1;
+    double bjetnessFV_npvPtOVcollPt =-1;
+    double bjetnessFV_pvPtOVcollPt = -1;
+    double bjetnessFV_npvPtOVpvPt =-1;
     double bjetnessFV_avip3d_val      = -1;
     double bjetnessFV_avip3d_sig      = -1;
+    double bjetnessFV_avsip3d_val     = -1;
     double bjetnessFV_avsip3d_sig     = -1;
+
+    double bjetnessFV_avip2d_val      = -1;
+    double bjetnessFV_avip2d_sig      = -1;
+    double bjetnessFV_avsip2d_val      = -1;
+    double bjetnessFV_avsip2d_sig      = -1;
+
+    double bjetnessFV_avip1d_val      = -1;
     double bjetnessFV_avip1d_sig      = -1;
+    double bjetnessFV_avsip1d_val      = -1;
+    double bjetnessFV_avsip1d_sig      = -1;
+
    //This is the method to access the BJetness variables
     get_bjetness_vars(
                       //Inputs:
@@ -383,18 +413,35 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
                       *ttrkbuilder, //Transient tracker builder to measure impact parameters
                       electron_pat, muon_h, //Leptons collections to count the number of electrons and muons
                       //BJetness variables
-                      bjetnessFV_num_leps,bjetnessFV_npvTrkOVcollTrk,bjetnessFV_avip3d_val,bjetnessFV_avip3d_sig,bjetnessFV_avsip3d_sig,bjetnessFV_avip1d_sig
+                      bjetnessFV_num_leps, bjetnessFV_npvTrkOVcollTrk, bjetnessFV_pvTrkOVcollTrk, bjetnessFV_avip3d_val, bjetnessFV_avip3d_sig, bjetnessFV_avsip3d_val, bjetnessFV_avsip3d_sig, bjetnessFV_avip2d_val, bjetnessFV_avip2d_sig, bjetnessFV_avsip2d_val, bjetnessFV_avsip2d_sig, bjetnessFV_avip1d_val, bjetnessFV_avip1d_sig, bjetnessFV_avsip1d_val, bjetnessFV_avsip1d_sig, bjetnessFV_npvTrkOVpvTrk, bjetnessFV_npvPtOVcollPt, bjetnessFV_pvPtOVcollPt, bjetnessFV_npvPtOVpvPt
                      );
     //Fill the quantities for the event
-    BJetnessValues->push_back(jetpt0);
     //Num_of_trks
     BJetnessValues->push_back(bjetnessFV_num_leps);
     BJetnessValues->push_back(bjetnessFV_npvTrkOVcollTrk);
+    BJetnessValues->push_back(bjetnessFV_pvTrkOVcollTrk);
+    BJetnessValues->push_back(bjetnessFV_npvTrkOVpvTrk);
+    BJetnessValues->push_back(bjetnessFV_npvPtOVcollPt);
+    BJetnessValues->push_back(bjetnessFV_pvPtOVcollPt);
+    BJetnessValues->push_back(bjetnessFV_npvPtOVpvPt);
+
     //ImpactParameter
     BJetnessValues->push_back(bjetnessFV_avip3d_val);
     BJetnessValues->push_back(bjetnessFV_avip3d_sig);
+    BJetnessValues->push_back(bjetnessFV_avsip3d_val);
     BJetnessValues->push_back(bjetnessFV_avsip3d_sig);
+
+    BJetnessValues->push_back(bjetnessFV_avip2d_val);
+    BJetnessValues->push_back(bjetnessFV_avip2d_sig);
+    BJetnessValues->push_back(bjetnessFV_avsip2d_val);
+    BJetnessValues->push_back(bjetnessFV_avsip2d_sig);
+
+    BJetnessValues->push_back(bjetnessFV_avip1d_val);
     BJetnessValues->push_back(bjetnessFV_avip1d_sig);
+    BJetnessValues->push_back(bjetnessFV_avsip1d_val);
+    BJetnessValues->push_back(bjetnessFV_avsip1d_sig);
+
+
   }else{//if(jet_num!=0)
     BJetnessValues->push_back(-999);
     //Num_of_trks
@@ -432,7 +479,7 @@ bool BJetness::is_loose_muon(const pat::Muon& mu, const reco::Vertex& vtx){
 }
 bool BJetness::is_tight_muon(const pat::Muon& mu, const reco::Vertex& vtx){
   bool isloosemu = false;
-  if(mu.pt()>25 &&
+  if(mu.pt()>26 &&
     TMath::Abs(mu.eta()) < 2.1 &&
     mu.isTightMuon(vtx) &&
     rel_iso_dbc_mu(mu) < 0.15
@@ -446,54 +493,16 @@ double BJetness::rel_iso_dbc_mu(const pat::Muon& lepton){
 //Look for loose electron (definition for the jet cleaning)
 bool BJetness::is_loose_electron(const pat::Electron& ele, double rhopog){
   bool isele = false;
-  if(ele.pt()>15 && TMath::Abs(ele.eta())<2.4 &&
-     !(fabs(ele.superCluster()->position().eta()) > 1.4442 && fabs(ele.superCluster()->position().eta()) < 1.5660)){
-    if(fabs(ele.superCluster()->position().eta())<1.4442
-      && (ele.full5x5_sigmaIetaIeta()<0.012)
-      && (ele.hcalOverEcal()<0.09)
-      && (ele.ecalPFClusterIso()/ele.pt()<0.37)
-      && (ele.hcalPFClusterIso()/ele.pt()<0.25)
-      && (ele.dr03TkSumPt()/ele.pt()<0.18)
-      && (fabs(ele.deltaEtaSuperClusterTrackAtVtx())<0.0095)
-      && (fabs(ele.deltaPhiSuperClusterTrackAtVtx())<0.065)){
+  if(ele.pt()>15 && TMath::Abs(ele.eta())<2.4 && !(fabs(ele.superCluster()->position().eta()) > 1.4442 && fabs(ele.superCluster()->position().eta()) < 1.5660)){
       isele = true;
-    }
-    if(fabs(ele.superCluster()->position().eta())>1.5660
-      && ele.full5x5_sigmaIetaIeta()<0.033
-      && ele.hcalOverEcal()<0.09
-      && (ele.ecalPFClusterIso()/ele.pt())<0.45
-      && (ele.hcalPFClusterIso()/ele.pt())<0.28
-      && (ele.dr03TkSumPt()/ele.pt())<0.18){
-      isele = true;
-    }
   }
-  //ele.passConversionVeto()
   return isele;
 }
 bool BJetness::is_tight_electron(const pat::Electron& ele, double rhopog){
   bool isele = false;
-  if(ele.pt()>30 && TMath::Abs(ele.eta())<2.1 &&
-     !(fabs(ele.superCluster()->position().eta()) > 1.4442 && fabs(ele.superCluster()->position().eta()) < 1.5660)){
-    if(fabs(ele.superCluster()->position().eta())<1.4442
-      && (ele.full5x5_sigmaIetaIeta()<0.012)
-      && (ele.hcalOverEcal()<0.09)
-      && (ele.ecalPFClusterIso()/ele.pt()<0.37)
-      && (ele.hcalPFClusterIso()/ele.pt()<0.25)
-      && (ele.dr03TkSumPt()/ele.pt()<0.18)
-      && (fabs(ele.deltaEtaSuperClusterTrackAtVtx())<0.0095)
-      && (fabs(ele.deltaPhiSuperClusterTrackAtVtx())<0.065)){
+  if(ele.pt()>30 && TMath::Abs(ele.eta())<2.1 && !(fabs(ele.superCluster()->position().eta()) > 1.4442 && fabs(ele.superCluster()->position().eta()) < 1.5660)){
       isele = true;
-    }
-    if(fabs(ele.superCluster()->position().eta())>1.5660
-      && ele.full5x5_sigmaIetaIeta()<0.033
-      && ele.hcalOverEcal()<0.09
-      && (ele.ecalPFClusterIso()/ele.pt())<0.45
-      && (ele.hcalPFClusterIso()/ele.pt())<0.28
-      && (ele.dr03TkSumPt()/ele.pt())<0.18){
-      isele = true;
-    }
   }
-  //ele.passConversionVeto()
   return isele;
 }
 double BJetness::rel_iso_dbc_ele(const pat::Electron& el, double rhopog){
@@ -546,7 +555,7 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
   if(!_is_data) GetJER(j, corrAK4PFchs, rhoJER, true, JERScaleFactor, JERScaleFactorUP, JERScaleFactorDOWN, iSetup);
   //Acceptance
   jetpt = (j.correctedJet("Uncorrected").pt()*corrAK4PFchs*JERScaleFactor);
-  if(jetpt < 30)       isgoodjet = false; //Please note that this requirement is for the SL channel, while for DL channel we require pT > 20!
+  if(jetpt < 30)       isgoodjet = false; //PLEASE NOTE: that this requirement is for the SL channel, while for DL channel we require pT > 20!
   if(fabs(j.eta())>2.4) isgoodjet = false;
   //ID requirements
   if(j.neutralHadronEnergyFraction() >= 0.99) isgoodjet = false;
@@ -559,6 +568,7 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
   return isgoodjet;
 }
 void BJetness::JECInitialization() {
+  // Procedure for running JEC and JECUnc on crab: https://twiki.cern.ch/twiki/bin/view/CMSPublic/WorkBookJetEnergyCorrections#JetEnCorFWLite
   //AK4chs - MC: Get the factorized jet corrector parameters.
   std::vector<std::string> jecPayloadNamesAK4PFchsMC_;
   jecPayloadNamesAK4PFchsMC_.push_back(jecPayloadNamesAK4PFchsMC1_.fullPath());
@@ -647,7 +657,7 @@ void BJetness::GetJER(pat::Jet jet, float JesSF, float rhoJER, bool AK4PFchs, fl
     cFactorJERdown = 1.160-0.029;
     cFactorJERup   = 1.160+0.029;
   }
-  //double recoJetPt = jet.pt();//(jet.correctedJet("Uncorrected").pt())*JesSF;
+
   double recoJetPt = (jet.correctedJet("Uncorrected").pt())*JesSF;
   double genJetPt  = jet.genJet()->pt();
   double diffPt    = recoJetPt - genJetPt;
@@ -656,11 +666,8 @@ void BJetness::GetJER(pat::Jet jet, float JesSF, float rhoJER, bool AK4PFchs, fl
   if(AK4PFchs){
     resolution = JME::JetResolution(jerAK4PFchs_);
     res_sf = JME::JetResolutionScaleFactor(jerAK4PFchsSF_);
-    //resolution = JME::JetResolution::get(iSetup, "AK4PFchs_pt");
-    //res_sf = JME::JetResolutionScaleFactor::get(iSetup, "AK4PFchs");
   } else {
-    //resolution = JME::JetResolution(jerAK4PFPuppi_);
-    //res_sf = JME::JetResolutionScaleFactor(jerAK4PFPuppiSF_);
+    std::cout << "BJetness.cc: WARNING - unsupported jet collection used. Currently only supported for AK4PFchs" << std::endl;
   }
   JME::JetParameters parameters;
   parameters.setJetPt(jet.pt());
@@ -681,78 +688,161 @@ void BJetness::GetJER(pat::Jet jet, float JesSF, float rhoJER, bool AK4PFchs, fl
 /////
 //   Methods for the BJetness variables
 /////
-void BJetness::get_bjetness_vars(
-                                           vector<pat::Jet> evtjets, const reco::Vertex& vtx, const TransientTrackBuilder& ttrkbuilder, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h,
-                                           double& bjetnessFV_num_leps, double& bjetnessFV_npvTrkOVcollTrk, double& bjetnessFV_avip3d_val, double& bjetnessFV_avip3d_sig, double& bjetnessFV_avsip3d_sig, double& bjetnessFV_avip1d_sig
+void BJetness::get_bjetness_vars(vector<pat::Jet> evtjets, const reco::Vertex& vtx, const TransientTrackBuilder& ttrkbuilder, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h,
+                                           double& bjetnessFV_num_leps, double& bjetnessFV_npvTrkOVcollTrk, double& bjetnessFV_pvTrkOVcollTrk, double& bjetnessFV_avip3d_val, double& bjetnessFV_avip3d_sig, double& bjetnessFV_avsip3d_val, double& bjetnessFV_avsip3d_sig, double& bjetnessFV_avip2d_val, double& bjetnessFV_avip2d_sig, double& bjetnessFV_avsip2d_val, double& bjetnessFV_avsip2d_sig, double& bjetnessFV_avip1d_val, double& bjetnessFV_avip1d_sig, double& bjetnessFV_avsip1d_val, double& bjetnessFV_avsip1d_sig, double &bjetnessFV_npvTrkOVpvTrk , double &bjetnessFV_npvPtOVcollPt , double &bjetnessFV_pvPtOVcollPt , double &bjetnessFV_npvPtOVpvPt
                                           ){
   //Get BJetness trk info
   vector<Track> jetschtrks; jetschtrks.clear();
+  vector<Track> jetschtrkspv;
+  vector<Track> jetschtrksnpv;
   double num_pvtrks  = 0;
   double num_npvtrks = 0;
   double num_eles    = 0;
   double num_mus     = 0;
   vector<tuple<double, double, double> > jetsdir; jetsdir.clear();
-  get_bjetness_trkinfos(evtjets, vtx, jetschtrks, num_pvtrks, num_npvtrks, electron_pat, muon_h, num_eles, num_mus, jetsdir);
+  get_bjetness_trkinfos(evtjets, vtx, jetschtrks, num_pvtrks, num_npvtrks, electron_pat, muon_h, num_eles, num_mus, jetsdir, jetschtrkspv, jetschtrksnpv);
   bjetnessFV_num_leps = num_eles+num_mus;
   if(jetschtrks.size()!=0){
     bjetnessFV_npvTrkOVcollTrk       = num_npvtrks/double(jetschtrks.size());
+    bjetnessFV_pvTrkOVcollTrk       = num_pvtrks/double(jetschtrks.size());
+    bjetnessFV_npvTrkOVpvTrk        = num_npvtrks/num_pvtrks;
+
+
+    double ptjettrks    = 0;
+    for(uint jt=0; jt<jetschtrks.size(); jt++) ptjettrks += jetschtrks[jt].pt();
+    double ptjettrkspv    = 0;
+    for(uint jt=0; jt<num_pvtrks; jt++) ptjettrkspv += jetschtrkspv[jt].pt();
+    double ptjettrksnpv    = 0;
+    for(uint jt=0; jt<num_npvtrks; jt++) ptjettrksnpv += jetschtrksnpv[jt].pt();
+
+
+    if(ptjettrks!=0) bjetnessFV_npvPtOVcollPt = ptjettrksnpv/ptjettrks;
+    else             bjetnessFV_npvPtOVcollPt = -997;
+    if(ptjettrks!=0) bjetnessFV_pvPtOVcollPt = ptjettrkspv/ptjettrks;
+    else             bjetnessFV_pvPtOVcollPt = -997;
+    if(ptjettrkspv!=0) bjetnessFV_npvPtOVpvPt = ptjettrksnpv/ptjettrkspv;
+    else               bjetnessFV_npvPtOVpvPt = -997;
+
     //Get BJetness Impact Parameters
     double ip_valtemp = 0;
+
     //3D
     double jetchtrks_avip3d_val  = 0;
     double jetchtrks_avip3d_sig  = 0;
+    double jetchtrks_avsip3d_val = 0;
     double jetchtrks_avsip3d_sig = 0;
-    get_avip3d(jetschtrks, ttrkbuilder, vtx, jetsdir, jetchtrks_avip3d_val,jetchtrks_avip3d_sig,jetchtrks_avsip3d_sig);
+    get_avip3d(jetschtrks, ttrkbuilder, vtx, jetsdir, jetchtrks_avip3d_val,jetchtrks_avip3d_sig,jetchtrks_avsip3d_val,jetchtrks_avsip3d_sig);
     ip_valtemp = jetchtrks_avip3d_val/jetschtrks.size();
     if(ip_valtemp==ip_valtemp) bjetnessFV_avip3d_val = ip_valtemp;
     else                       bjetnessFV_avip3d_val = -996;
     ip_valtemp = jetchtrks_avip3d_sig/jetschtrks.size();
     if(ip_valtemp==ip_valtemp) bjetnessFV_avip3d_sig = ip_valtemp;
     else                       bjetnessFV_avip3d_sig = -996;
+    ip_valtemp = jetchtrks_avsip3d_val/jetschtrks.size();
+    if(ip_valtemp==ip_valtemp) bjetnessFV_avsip3d_val = ip_valtemp;
+    else                       bjetnessFV_avsip3d_val = -996;
     ip_valtemp = jetchtrks_avsip3d_sig/jetschtrks.size();
     if(ip_valtemp==ip_valtemp) bjetnessFV_avsip3d_sig = ip_valtemp;
     else                       bjetnessFV_avsip3d_sig = -996;
-    //1D
+
+
+
+    //================= 2D Variables =================
+    double jetchtrks_avip2d_val  = 0;
+    double jetchtrks_avip2d_sig  = 0;
+    double jetchtrks_avsip2d_val = 0;
+    double jetchtrks_avsip2d_sig = 0;
+    get_avip2d(jetschtrks, ttrkbuilder, vtx, jetsdir, jetchtrks_avip2d_val,jetchtrks_avip2d_sig,jetchtrks_avsip2d_val,jetchtrks_avsip2d_sig);
+    ip_valtemp = jetchtrks_avip2d_val/jetschtrks.size();
+    if(ip_valtemp==ip_valtemp) bjetnessFV_avip2d_val = ip_valtemp;
+    else                       bjetnessFV_avip2d_val = -996;
+    ip_valtemp = jetchtrks_avip2d_sig/jetschtrks.size();
+    if(ip_valtemp==ip_valtemp) bjetnessFV_avip2d_sig = ip_valtemp;
+    else                       bjetnessFV_avip2d_sig = -996;
+    ip_valtemp = jetchtrks_avsip2d_val/jetschtrks.size();
+    if(ip_valtemp==ip_valtemp) bjetnessFV_avsip2d_val = ip_valtemp;
+    else                       bjetnessFV_avsip2d_val = -996;
+    ip_valtemp = jetchtrks_avsip2d_sig/jetschtrks.size();
+    if(ip_valtemp==ip_valtemp) bjetnessFV_avsip2d_sig = ip_valtemp;
+    else                       bjetnessFV_avsip2d_sig = -996;
+
+    //BJetness 1D Variables
+    double jetchtrks_avip1d_val  = 0;
     double jetchtrks_avip1d_sig  = 0;
-    get_avip1d(jetschtrks, ttrkbuilder, vtx, jetsdir, jetchtrks_avip1d_sig);
+    double jetchtrks_avsip1d_val  = 0;
+    double jetchtrks_avsip1d_sig  = 0;
+    get_avip1d(jetschtrks, ttrkbuilder, vtx, jetsdir, jetchtrks_avip1d_val, jetchtrks_avip1d_sig, jetchtrks_avsip1d_val, jetchtrks_avsip1d_sig);
+    ip_valtemp = jetchtrks_avip1d_val/jetschtrks.size();
+    if(ip_valtemp==ip_valtemp) bjetnessFV_avip1d_val = ip_valtemp;
+    else                       bjetnessFV_avip1d_val = -996;
     ip_valtemp = jetchtrks_avip1d_sig/jetschtrks.size();
     if(ip_valtemp==ip_valtemp) bjetnessFV_avip1d_sig = ip_valtemp;
     else                       bjetnessFV_avip1d_sig = -996;
+    ip_valtemp = jetchtrks_avsip1d_val/jetschtrks.size();
+    if(ip_valtemp==ip_valtemp) bjetnessFV_avsip1d_val = ip_valtemp;
+    else                       bjetnessFV_avsip1d_val = -996;
+    ip_valtemp = jetchtrks_avsip1d_sig/jetschtrks.size();
+    if(ip_valtemp==ip_valtemp) bjetnessFV_avsip1d_sig = ip_valtemp;
+    else                       bjetnessFV_avsip1d_sig = -996;
+
   }else{
     bjetnessFV_npvTrkOVcollTrk       = -998;
+    bjetnessFV_pvTrkOVcollTrk       = -998;
+    bjetnessFV_npvTrkOVpvTrk =-998;
+    bjetnessFV_npvPtOVcollPt =-998;
+    bjetnessFV_pvPtOVcollPt = -998;
+    bjetnessFV_npvPtOVpvPt =-998;
     bjetnessFV_avip3d_val            = -998;
     bjetnessFV_avip3d_sig            = -998;
+    bjetnessFV_avsip3d_val           = -998;
     bjetnessFV_avsip3d_sig           = -998;
+    bjetnessFV_avip1d_val            = -998;
     bjetnessFV_avip1d_sig            = -998;
+    bjetnessFV_avsip1d_val            = -998;
+    bjetnessFV_avsip1d_sig            = -998;
   }
 }
 //Get the BJetness trk info
-void BJetness::get_bjetness_trkinfos(vector<pat::Jet> evtjets, const reco::Vertex& vtx, vector<Track>& jetchtrks, double& bjetness_num_pvtrks, double& bjetness_num_npvtrks, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h, double& bjetness_num_eles, double& bjetness_num_mus, vector<tuple<double, double, double> >& jetsdir){
+void BJetness::get_bjetness_trkinfos(vector<pat::Jet> evtjets, const reco::Vertex& vtx, vector<Track>& jetchtrks, double& bjetness_num_pvtrks, double& bjetness_num_npvtrks, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h, double& bjetness_num_eles, double& bjetness_num_mus, vector<tuple<double, double, double> >& jetsdir, vector<Track>& jetchtrkspv, vector<Track>& jetchtrksnpv){
   //Loop over evt jet
   for(uint j=0; j<evtjets.size(); j++){
     pat::Jet jet = evtjets[j];
+
     //Access jet daughters
     vector<CandidatePtr> jdaus(jet.daughterPtrVector());
     sort(jdaus.begin(), jdaus.end(), [](const reco::CandidatePtr &p1, const reco::CandidatePtr &p2) {return p1->pt() > p2->pt();});
+
     for(uint jd=0; jd<jdaus.size(); jd++){
       const pat::PackedCandidate &jcand = dynamic_cast<const pat::PackedCandidate &>(*jdaus[jd]);
       //dR requirement
       if(deltaR(jcand.p4(),jet.p4())>0.4) continue;
       Track trk = Track(jcand.pseudoTrack());
       bool isgoodtrk = is_goodtrk(trk,vtx);
+
+
       //Minimal conditions for a BJetness jet constituent
       if(isgoodtrk && jcand.charge()!=0 && jcand.fromPV()>1){
         jetchtrks.push_back(trk);
-        if(jcand.fromPV()==3) bjetness_num_pvtrks++;
-        if(jcand.fromPV()==2) bjetness_num_npvtrks++;
+        if(jcand.fromPV()==pat::PackedCandidate::PVUsedInFit){
+          jetchtrkspv.push_back(trk);
+        }else{
+          jetchtrksnpv.push_back(trk);
+        }
+        //if(jcand.fromPV()==3) bjetness_num_pvtrks++;
+        //if(jcand.fromPV()==2) bjetness_num_npvtrks++;
+        if(jcand.fromPV()==pat::PackedCandidate::PVUsedInFit) bjetness_num_pvtrks++;
+        else bjetness_num_npvtrks++;
         jetsdir.push_back(make_tuple(jet.px(),jet.py(),jet.pz()));
         if(fabs(jcand.pdgId())==13 && is_loosePOG_jetmuon(jcand,muon_h)) bjetness_num_mus++;
         if(fabs(jcand.pdgId())==11 && is_softLep_jetelectron(jcand,electron_pat,vtx)) bjetness_num_eles++;
-        //if(fabs(jcand.pdgId())==11 && is_loosePOGNoIPNoIso_jetelectron(jcand,electron_pat,vtx)) bjetness_num_eles++;
       }//Ch trks
     }//Loop on jet daus
   }//Loop on evt jet
+
 }
+
+
+
 //Check that the track is a good track
 bool BJetness::is_goodtrk(Track trk,const reco::Vertex& vtx){
  bool isgoodtrk = false;
@@ -791,6 +881,43 @@ bool BJetness::is_softLep_jetelectron(const pat::PackedCandidate &jcand, edm::Ha
   }
   return isele;
 }
+
+bool BJetness::is_vetoPOGNoIPNoIso_jetelectron(const pat::PackedCandidate &jcand, edm::Handle<edm::View<pat::Electron> > electron_pat){
+  bool isele = false;
+  for(edm::View<pat::Electron>::const_iterator ele = electron_pat->begin(); ele != electron_pat->end(); ele++){
+    const pat::Electron &lele = *ele;
+    if(deltaR(jcand.p4(),lele.p4())<0.1 && fabs(jcand.pt()-lele.pt())/lele.pt()<0.05){
+
+      double ooEmooP = 999;
+      if(lele.ecalEnergy()==0)                   ooEmooP = 1e30;
+      else if(!std::isfinite(lele.ecalEnergy())) ooEmooP = 1e30;
+      else                                       ooEmooP = fabs(1.0/lele.ecalEnergy() - lele.eSuperClusterOverP()/lele.ecalEnergy());
+
+      if(!(fabs(lele.superCluster()->position().eta()) > 1.4442 && fabs(lele.superCluster()->position().eta()) < 1.5660)){
+        if(fabs(lele.superCluster()->position().eta())<=1.4442
+        && lele.full5x5_sigmaIetaIeta()<0.0115
+        && fabs(lele.deltaEtaSuperClusterTrackAtVtx())<0.00749
+        && fabs(lele.deltaPhiSuperClusterTrackAtVtx())<0.228
+        && lele.hcalOverEcal()<0.356
+        && ooEmooP<0.299
+        && lele.gsfTrack()->hitPattern().numberOfHits(reco::HitPattern::MISSING_INNER_HITS)<=2
+        && lele.passConversionVeto())
+        {isele = true;}
+        if(fabs(lele.superCluster()->position().eta())>1.5660
+        && (lele.full5x5_sigmaIetaIeta()<0.037)
+        && (lele.hcalOverEcal()<0.211)
+        && (fabs(lele.deltaEtaSuperClusterTrackAtVtx())<0.00895)
+        && (fabs(lele.deltaPhiSuperClusterTrackAtVtx())<0.213)
+        && ooEmooP<0.15 && lele.gsfTrack()->hitPattern().numberOfHits(reco::HitPattern::MISSING_INNER_HITS)<=3
+        && lele.passConversionVeto() )
+        {isele = true;}
+      }
+      if(isele) break;
+    }
+  }
+  return isele;
+}
+
 bool BJetness::is_loosePOGNoIPNoIso_jetelectron(const pat::PackedCandidate &jcand, edm::Handle<edm::View<pat::Electron> > electron_pat, const reco::Vertex& vtx){
   bool isele = false;
   for(edm::View<pat::Electron>::const_iterator ele = electron_pat->begin(); ele != electron_pat->end(); ele++){
@@ -801,23 +928,23 @@ bool BJetness::is_loosePOGNoIPNoIso_jetelectron(const pat::PackedCandidate &jcan
       else if(!std::isfinite(lele.ecalEnergy())) ooEmooP = 1e30;
       else                                       ooEmooP = fabs(1.0/lele.ecalEnergy() - lele.eSuperClusterOverP()/lele.ecalEnergy());
       if(!(fabs(lele.superCluster()->position().eta()) > 1.4442 && fabs(lele.superCluster()->position().eta()) < 1.5660)){
-        if(fabs(lele.superCluster()->position().eta())<1.4442
-          && (lele.full5x5_sigmaIetaIeta()<0.0103)
-          && (lele.hcalOverEcal()<0.104)
-          && (fabs(lele.deltaEtaSuperClusterTrackAtVtx())<0.0105)
-          && (fabs(lele.deltaPhiSuperClusterTrackAtVtx())<0.115)
-          && ooEmooP<0.102
-          && lele.gsfTrack()->hitPattern().numberOfHits(reco::HitPattern::MISSING_INNER_HITS)<=2
+        if(fabs(lele.superCluster()->position().eta())<=1.4442
+          && (lele.full5x5_sigmaIetaIeta()<0.011)
+          && (lele.hcalOverEcal()<0.298)
+          && (fabs(lele.deltaEtaSuperClusterTrackAtVtx())<0.00477)
+          && (fabs(lele.deltaPhiSuperClusterTrackAtVtx())<0.222)
+          && ooEmooP<0.241
+          && lele.gsfTrack()->hitPattern().numberOfHits(reco::HitPattern::MISSING_INNER_HITS)<=1
           && lele.passConversionVeto()
           ){
             isele = true;
         }
         if(fabs(lele.superCluster()->position().eta())>1.5660
-          && (lele.full5x5_sigmaIetaIeta()<0.0301)
-          && (lele.hcalOverEcal()<0.0897)
-          && (fabs(lele.deltaEtaSuperClusterTrackAtVtx())<0.00814)
-          && (fabs(lele.deltaPhiSuperClusterTrackAtVtx())<0.182)
-          && ooEmooP<0.126
+          && (lele.full5x5_sigmaIetaIeta()<0.0314)
+          && (lele.hcalOverEcal()<0.101)
+          && (fabs(lele.deltaEtaSuperClusterTrackAtVtx())<0.00868)
+          && (fabs(lele.deltaPhiSuperClusterTrackAtVtx())<0.213)
+          && ooEmooP<0.14
           && lele.gsfTrack()->hitPattern().numberOfHits(reco::HitPattern::MISSING_INNER_HITS)<=1
           && lele.passConversionVeto()
           ){
@@ -830,7 +957,7 @@ bool BJetness::is_loosePOGNoIPNoIso_jetelectron(const pat::PackedCandidate &jcan
   return isele;
 }
 //Methods related to IP
-void BJetness::get_avip3d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip3d_val, double& jetchtrks_avip3d_sig, double& jetchtrks_avsip3d_sig){
+void BJetness::get_avip3d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip3d_val, double& jetchtrks_avip3d_sig, double& jetchtrks_avsip3d_val, double& jetchtrks_avsip3d_sig){
   double valtemp = 0;
   vector<TransientTrack> ttrks = get_ttrks(trks,ttrkbuilder);
   for(uint t=0; t<ttrks.size(); t++){
@@ -839,11 +966,30 @@ void BJetness::get_avip3d(vector<Track> trks, const TransientTrackBuilder& ttrkb
     valtemp = IPTools::absoluteImpactParameter3D(ttrks[t],vtx).second.significance();
     if(valtemp==valtemp) jetchtrks_avip3d_sig  += valtemp;
     GlobalVector jetsdirgv(get<0>(jetsdir[t]),get<1>(jetsdir[t]),get<2>(jetsdir[t]));
+    valtemp = IPTools::signedImpactParameter3D(ttrks[t],jetsdirgv,vtx).second.value();
+    if(valtemp==valtemp){jetchtrks_avsip3d_val += valtemp;}
     valtemp = IPTools::signedImpactParameter3D(ttrks[t],jetsdirgv,vtx).second.significance();
     if(valtemp==valtemp) jetchtrks_avsip3d_sig += valtemp;
   }
 }
-void BJetness::get_avip1d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip1d_sig){
+void BJetness::get_avip2d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip2d_val, double& jetchtrks_avip2d_sig, double& jetchtrks_avsip2d_val, double& jetchtrks_avsip2d_sig){
+  double valtemp = 0;
+  vector<TransientTrack> ttrks = get_ttrks(trks,ttrkbuilder);
+  for(uint t=0; t<ttrks.size(); t++){
+    valtemp = IPTools::absoluteTransverseImpactParameter(ttrks[t],vtx).second.value();
+    if(valtemp==valtemp) jetchtrks_avip2d_val  += valtemp;
+    valtemp = IPTools::absoluteTransverseImpactParameter(ttrks[t],vtx).second.significance();
+    if(valtemp==valtemp) jetchtrks_avip2d_sig  += valtemp;
+    GlobalVector jetsdirgv(get<0>(jetsdir[t]),get<1>(jetsdir[t]),get<2>(jetsdir[t]));
+    valtemp = IPTools::signedTransverseImpactParameter(ttrks[t],jetsdirgv,vtx).second.value();
+    if(valtemp==valtemp){jetchtrks_avsip2d_val += valtemp;}
+    valtemp = IPTools::signedTransverseImpactParameter(ttrks[t],jetsdirgv,vtx).second.significance();
+    if(valtemp==valtemp) jetchtrks_avsip2d_sig += valtemp;
+  }
+}
+
+
+/*void BJetness::get_avip1d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip1d_sig){
   double valtemp = 0;
   vector<TransientTrack> ttrks = get_ttrks(trks,ttrkbuilder);
   SignedTransverseImpactParameter stip;
@@ -852,7 +998,25 @@ void BJetness::get_avip1d(vector<Track> trks, const TransientTrackBuilder& ttrkb
     valtemp = fabs(stip.zImpactParameter(ttrks[t],jetsdirgv,vtx).second.significance());
     if(valtemp==valtemp) jetchtrks_avip1d_sig  += valtemp;
   }
+}*/
+
+void BJetness::get_avip1d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip1d_val, double& jetchtrks_avip1d_sig, double& jetchtrks_avsip1d_val, double& jetchtrks_avsip1d_sig){
+  double valtemp = 0;
+  vector<TransientTrack> ttrks = get_ttrks(trks,ttrkbuilder);
+  SignedTransverseImpactParameter stip;
+  for(uint t=0; t<ttrks.size(); t++){
+    GlobalVector jetsdirgv(get<0>(jetsdir[t]),get<1>(jetsdir[t]),get<2>(jetsdir[t]));
+    valtemp = fabs(stip.zImpactParameter(ttrks[t],jetsdirgv,vtx).second.value());
+    if(valtemp==valtemp) jetchtrks_avip1d_val  += valtemp;
+    valtemp = fabs(stip.zImpactParameter(ttrks[t],jetsdirgv,vtx).second.significance());
+    if(valtemp==valtemp) jetchtrks_avip1d_sig  += valtemp;
+    valtemp = stip.zImpactParameter(ttrks[t],jetsdirgv,vtx).second.value();
+    if(valtemp==valtemp) jetchtrks_avsip1d_val += valtemp;
+    valtemp = stip.zImpactParameter(ttrks[t],jetsdirgv,vtx).second.significance();
+    if(valtemp==valtemp) jetchtrks_avsip1d_sig += valtemp;
+  }
 }
+
 vector<TransientTrack> BJetness::get_ttrks(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder){
  vector<TransientTrack> ttrks;
  for(uint tr=0; tr<trks.size(); tr++){
