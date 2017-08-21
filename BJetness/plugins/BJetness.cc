@@ -11,10 +11,13 @@
      [Notes on implementation]
 */
 //
-// Original Author:  Francesco Romeo
+// Authors:  Francesco Romeo & Joshuha Thomas-Wilsker
 //         Created:  Sun, 30 Oct 2016 11:02:22 GMT
 //
 //
+
+#include "BJetnessTTHbb/BJetness/interface/BJetness.h"
+
 #include <memory>
 #include <iostream>
 #include <cmath>
@@ -105,25 +108,27 @@
 #include "TrackingTools/IPTools/interface/IPTools.h"
 #include "RecoBTag/BTagTools/interface/SignedTransverseImpactParameter.h"
 #include "TMath.h"
+
 KalmanVertexFitter vtxFitterFV(true);
 using namespace std;
 using namespace pat;
 using namespace edm;
 using namespace reco;
+
 //
-// class declaration
+// Class definition
 //
 class BJetness : public edm::stream::EDProducer<> {
+
   public:
+
     explicit BJetness(const edm::ParameterSet&);
     ~BJetness();
     static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
-    /////
-    //   Methods
-    /////
-    void JECInitialization();
+
+    // ===== Methods aligned to the TTHbb selection =====
+    void JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsMC, std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsDATA);
     void GetJER(pat::Jet jet, float JesSF, float rhoJER, bool AK4PFchs, float &JERScaleFactor, float &JERScaleFactorUP, float &JERScaleFactorDOWN, const edm::EventSetup& iSetup);
-    //Methods to be aligned to the TTHbb selection
     bool isGoodVertex(const reco::Vertex& vtx);
     bool is_loose_muon(const pat::Muon& mu, const reco::Vertex& vtx);
     bool is_tight_muon(const pat::Muon& mu, const reco::Vertex& vtx);
@@ -132,16 +137,20 @@ class BJetness : public edm::stream::EDProducer<> {
     bool is_tight_electron(const pat::Electron& ele, double rhopog);//, const reco::Vertex& vtx);
     double rel_iso_dbc_ele(const pat::Electron& lepton, double rhopog);
     double get_effarea(double eta);
-    bool is_good_jet(const pat::Jet &j, double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double & jetpt);
+    bool is_good_jet(const pat::Jet &j, double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double & jetpt, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA, string sysUncSource_, string is_updown);
+    //===========================================================
+
   private:
     virtual void beginStream(edm::StreamID) override;
     virtual void produce(edm::Event&, const edm::EventSetup&) override;
     virtual void endStream() override;
-    // ----------member data ---------------------------
-    typedef std::vector<float> FlavorJetnessValues;
-    /////
-    //   Config variables
-    /////
+
+    // Ensure the class recognises containers we will book into event:
+    //typedef std::vector<float> FlavorJetnessValues;
+    //JEC systematic variations of BJetness values.
+    typedef std::vector< std::vector<float> > FlavorJetnessValues_JECSysts;
+    //typedef std::vector< FlavorJetnessValues > FlavorJetnessValues_JECSysts;
+
     bool _is_data;
     edm::EDGetTokenT<reco::VertexCollection> vtx_h_;
     edm::EDGetTokenT<edm::View<pat::Electron> > electron_pat_;
@@ -167,8 +176,20 @@ class BJetness : public edm::stream::EDProducer<> {
     std::string jerAK4PFchsSF_;
     boost::shared_ptr<FactorizedJetCorrector>   jecAK4PFchsMC_;
     boost::shared_ptr<JetCorrectionUncertainty> jecAK4PFchsMCUnc_;
+    //===========================================================
+    boost::shared_ptr<JetCorrectionUncertainty> jecAK4PFchsMCUnc_AbsoluteStat;
+    //===========================================================
+
     boost::shared_ptr<FactorizedJetCorrector>   jecAK4PFchsDATA_;
     boost::shared_ptr<JetCorrectionUncertainty> jecAK4PFchsDATAUnc_;
+    //===========================================================
+    boost::shared_ptr<JetCorrectionUncertainty> jecAK4PFchsDATAUnc_AbsoluteStat;
+    //===========================================================
+
+    std::vector<boost::shared_ptr<JetCorrectionUncertainty> > factorisedJECsMC_;
+    std::vector<boost::shared_ptr<JetCorrectionUncertainty> > factorisedJECsDATA_;
+
+
     //Methods for the BJetness variables
     void get_bjetness_vars(
                            vector<pat::Jet> evtjets, const reco::Vertex& vtx, const TransientTrackBuilder& ttrkbuilder, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h,
@@ -185,8 +206,10 @@ class BJetness : public edm::stream::EDProducer<> {
     void get_avip1d(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder, reco::Vertex vtx, vector<tuple<double, double, double> >& jetsdir, double& jetchtrks_avip1d_val, double& jetchtrks_avip1d_sig, double& jetchtrks_avsip1d_val, double& jetchtrks_avsip1d_sig);
     vector<TransientTrack> get_ttrks(vector<Track> trks, const TransientTrackBuilder& ttrkbuilder);
 };
+
+
 //
-// constructors and destructor
+// Class constructor.
 //
 BJetness::BJetness(const edm::ParameterSet& iConfig):
   vtx_h_(consumes<reco::VertexCollection>(iConfig.getParameter<edm::InputTag>("vertices"))),
@@ -199,6 +222,7 @@ BJetness::BJetness(const edm::ParameterSet& iConfig):
   rhopogHandle_(consumes<double>(edm::InputTag("fixedGridRhoFastjetAll"))),
   rhoJERHandle_(consumes<double>(edm::InputTag("fixedGridRhoAll")))
 {
+  // Read info in from config:
   _is_data = iConfig.getParameter<bool>("is_data");
   _vtx_ndof_min       = 4;
   _vtx_rho_max        = 2;
@@ -214,248 +238,569 @@ BJetness::BJetness(const edm::ParameterSet& iConfig):
   jecPayloadNamesAK4PFchsDATAUnc_ = iConfig.getParameter<edm::FileInPath>("jecPayloadNamesAK4PFchsDATAUnc");
   jerAK4PFchs_                    = iConfig.getParameter<edm::FileInPath>("jerAK4PFchs").fullPath();
   jerAK4PFchsSF_                  = iConfig.getParameter<edm::FileInPath>("jerAK4PFchsSF").fullPath();
-  JECInitialization();
-  //register your products
-  produces<FlavorJetnessValues>("BJetnessValue").setBranchAlias("BJetnessValues");
-  //now do what ever other initialization is needed
+
+  //Instantiate JEC uncertainty sources and push into vectors:
+  JECInitialization(factorisedJECsMC_ , factorisedJECsDATA_);
+
+  // Register class products with in framework.
+  //produces<FlavorJetnessValues>("BJetnessValue").setBranchAlias("BJetnessValues");
+  produces<FlavorJetnessValues_JECSysts>("BJetnessValueJECSysts").setBranchAlias("BJetnessValueJECSysts");
+  //produces<std::vector< std::vector<float> > >("BJetnessValueJECSysts").setBranchAlias("BJetnessValueJECSysts");
+
+
 }
-BJetness::~BJetness()
-{
+
+//Class destructor
+BJetness::~BJetness(){
   // do anything here that needs to be done at destruction time
   // (e.g. close files, deallocate resources etc.)
 }
-//
-// member functions
-//
-// ------------ method called to produce the data  ------------
+
+
+// ------------ Create, fill and put products into events ------------
 void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
+  //std::cout << "Event number = " << iEvent.id().event() << std::endl;
   //Store bjetness vars
-  auto_ptr<FlavorJetnessValues> BJetnessValues( new FlavorJetnessValues );
-  /////
-  //   Recall collections
-  /////
-  edm::Handle<reco::VertexCollection> vtx_h;
-  iEvent.getByToken(vtx_h_, vtx_h);
-  edm::Handle<edm::View<pat::Electron> > electron_pat;
-  iEvent.getByToken(electron_pat_, electron_pat);
-  edm::Handle<edm::View<pat::Muon> > muon_h;
-  iEvent.getByToken(muon_h_, muon_h);
-  edm::Handle<pat::JetCollection> jets;
-  iEvent.getByToken(jets_, jets);
-  edm::Handle<double> rhopogHandle;
-  iEvent.getByToken(rhopogHandle_,rhopogHandle);
-  double rhopog = *rhopogHandle;
-  edm::Handle<double> rhoJERHandle;
-  iEvent.getByToken(rhoJERHandle_,rhoJERHandle);
-  double rhoJER = *rhoJERHandle;
-  edm::Handle<edm::ValueMap<bool>  > mvanontrig_id_decisions;
-  iEvent.getByToken(elemvanontrig_, mvanontrig_id_decisions);
-  edm::Handle<edm::ValueMap<bool> > tight_id_decisions;
-  iEvent.getByToken(electronTightIdMapToken_, tight_id_decisions);
+  //auto_ptr<FlavorJetnessValues> BJetnessValues( new FlavorJetnessValues );
+  auto_ptr<FlavorJetnessValues_JECSysts> BJetnessValueJECSysts( new FlavorJetnessValues_JECSysts );
+  //auto_ptr<std::vector< std::vector<float> > > BJetnessValueJECSysts( new std::vector< std::vector<float> > );
 
-  edm::ESHandle<TransientTrackBuilder> ttrkbuilder;
-  iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder",ttrkbuilder);
-  /////
-  //   First clean the jet according the TTHbb selection
-  /////
-  //Require a good vertex (This part has to be clarified (do we want the first PV to be a good one?))
-  if(vtx_h->empty()){
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    iEvent.put(BJetnessValues,"BJetnessValue");
-    return; // skip the event if no PV found
+  std::vector<float> bJetnessVariables;
+
+  const char* sysUncNames[] = {"Nominal",
+                              "Total",
+                              "AbsoluteStat",
+                              "AbsoluteScale",
+                              "AbsoluteFlavMap",
+                              "AbsoluteMPFBias",
+                              "Fragmentation",
+                              "SinglePionECAL",
+                              "SinglePionHCAL",
+                              "FlavorQCD",
+                              "TimePtEta",
+                              "RelativeJEREC1",
+                              "RelativeJEREC2",
+                              "RelativeJERHF",
+                              "RelativePtBB",
+                              "RelativePtEC1",
+                              "RelativePtEC2",
+                              "RelativePtHF",
+                              "RelativeBal",
+                              "RelativeFSR",
+                              "RelativeStatFSR",
+                              "RelativeStatEC",
+                              "RelativeStatHF",
+                              "PileUpDataMC",
+                              "PileUpPtRef",
+                              "PileUpPtBB",
+                              "PileUpPtEC1",
+                              "PileUpPtEC2",
+                              "PileUpPtHF",
+                              "PileUpMuZero",
+                              "PileUpEnvelope",
+                              "SubTotalPileUp",
+                              "SubTotalRelative",
+                              "SubTotalPt",
+                              "SubTotalScale",
+                              "SubTotalAbsolute",
+                              "SubTotalMC",
+                              "TotalNoFlavor",
+                              "TotalNoFlavorNoTime",
+                              "FlavorZJet",
+                              "FlavorPhotonJet",
+                              "FlavorPureGluon",
+                              "FlavorPureQuark",
+                              "FlavorPureCharm",
+                              "FlavorPureBottom"};
+
+
+  const char* updownNames[] = {"_UP_","_DOWN_"};
+
+  std::vector<std::string> sysUncSources(sysUncNames,std::end(sysUncNames));
+  std::vector<std::string> updown(updownNames,std::end(updownNames));
+
+  if (factorisedJECsMC_.size() != factorisedJECsDATA_.size()){
+    std::cout << "BJetness::WARNING: Crash imminent. Different number of factorised JEC uuncertainty sources for data and MC." << std::endl;
+    std::cout << "BJetness:: WARNING: Check sources JECInitialisation method." <<std::endl;
   }
-  reco::VertexCollection::const_iterator firstgoodVertex = vtx_h->end();
-  for(reco::VertexCollection::const_iterator it = vtx_h->begin(); it != firstgoodVertex; it++){
-    if(isGoodVertex(*it)){
-      firstgoodVertex = it;
-      break;
+
+  // Declare temp pointer to be initialised with each systematic uncertainty.
+  boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC;
+  boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA;
+
+  for (uint h=0; h<BJetnessValueJECSysts->size(); h++){
+    (BJetnessValueJECSysts->at(h)).clear();
+  }
+  BJetnessValueJECSysts->clear();
+
+  //========================================
+  //Loop over JEC uncertainty sources
+  //========================================
+  for(uint i=0; i<sysUncSources.size(); i++){
+
+    uint updown_count;
+    if (sysUncSources[i]=="Nominal"){
+      updown_count=1;
     }
+    else{
+      updown_count=2;
+    }
+
+    for(uint k=0; k<updown_count; k++){
+      bJetnessVariables.clear();
+
+      //cout << "sysUncSource = " << sysUncSources[i] << " ; up/down count = " << k << endl;
+
+      if (sysUncSources[i]!="Nominal"){
+        //std::cout << sysUncSources.at(i-1) << std::endl;
+        temp_JECUncMC = factorisedJECsMC_.at(i-1);
+        temp_JECUncDATA = factorisedJECsDATA_.at(i-1);
+      }
+
+      /////
+      //   Recall collections
+      /////
+      edm::Handle<reco::VertexCollection> vtx_h;
+      iEvent.getByToken(vtx_h_, vtx_h);
+      edm::Handle<edm::View<pat::Electron> > electron_pat;
+      iEvent.getByToken(electron_pat_, electron_pat);
+      edm::Handle<edm::View<pat::Muon> > muon_h;
+      iEvent.getByToken(muon_h_, muon_h);
+      edm::Handle<pat::JetCollection> jets;
+      iEvent.getByToken(jets_, jets);
+      edm::Handle<double> rhopogHandle;
+      iEvent.getByToken(rhopogHandle_,rhopogHandle);
+      double rhopog = *rhopogHandle;
+      edm::Handle<double> rhoJERHandle;
+      iEvent.getByToken(rhoJERHandle_,rhoJERHandle);
+      double rhoJER = *rhoJERHandle;
+      edm::Handle<edm::ValueMap<bool>  > mvanontrig_id_decisions;
+      iEvent.getByToken(elemvanontrig_, mvanontrig_id_decisions);
+      edm::Handle<edm::ValueMap<bool> > tight_id_decisions;
+      iEvent.getByToken(electronTightIdMapToken_, tight_id_decisions);
+
+      edm::ESHandle<TransientTrackBuilder> ttrkbuilder;
+      iSetup.get<TransientTrackRecord>().get("TransientTrackBuilder",ttrkbuilder);
+
+      /////
+      //   First clean the jet according the TTHbb selection
+      /////
+      // Require a good vertex (This part has to be clarified (do we want the first PV to be a good one?))
+      if(vtx_h->empty()){
+
+        //////////////////////////////////////////
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+
+
+        /*BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);*/
+
+        //////////////////////////////////////////
+        //cout << "Event from systematic variation "<< sysUncSources[i] << " failed vertex cuts." << endl;
+        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        BJetnessValueJECSysts->push_back(bJetnessVariables);
+        //cout << "Put bJetness object into Event" << endl;
+        //iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
+        //iEvent.put(BJetnessValues,"BJetnessValue");
+        //return; // skip the event if no PV found
+        continue;
+      }
+      reco::VertexCollection::const_iterator firstgoodVertex = vtx_h->end();
+      for(reco::VertexCollection::const_iterator it = vtx_h->begin(); it != firstgoodVertex; it++){
+        if(isGoodVertex(*it)){
+          firstgoodVertex = it;
+          break;
+        }
+      }
+      if(firstgoodVertex == vtx_h->end()){
+
+        ////////////////////////////////////////////////
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+
+
+        /*BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);*/
+
+        ////////////////////////////////////////////////
+        //cout << "Event from systematic variation "<< sysUncSources[i] << " failed first good vertex cut." << endl;
+        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        BJetnessValueJECSysts->push_back(bJetnessVariables);
+        //cout << "Put bJetness object into Event" << endl;
+        //iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
+        //iEvent.put(BJetnessValues,"BJetnessValue");
+        //return;
+        continue;
+      }
+      const reco::Vertex &PV = vtx_h->front(); //It still takes the first vertex
+
+      //Look for muons, electrons
+      vector<const reco::Candidate*> looseleps;
+      vector<const reco::Candidate*> tightleps;
+
+      //================ Muons ======================
+      for(const pat::Muon &mu : *muon_h){
+        if(!is_loose_muon(mu,PV)) continue;
+        looseleps.push_back((const reco::Candidate*)&mu);
+        if(!is_tight_muon(mu,PV)) continue;
+        tightleps.push_back((const reco::Candidate*)&mu);
+      }
+      //====================================================
+
+      //================ Electrons ==================
+
+      for(edm::View<pat::Electron>::const_iterator ele = electron_pat->begin(); ele != electron_pat->end(); ele++){
+        const Ptr<pat::Electron> elPtr(electron_pat, ele - electron_pat->begin() );
+        bool isPassEletrig = (*tight_id_decisions)[ elPtr ];
+        const pat::Electron &lele = *ele;
+        if(!(isPassEletrig)) continue;
+        if(!(is_loose_electron(*ele,rhopog))) continue;
+        if(!(rel_iso_dbc_ele(*ele,rhopog)<0.15)) continue;
+        looseleps.push_back((const reco::Candidate*)&lele);
+        if(!(is_tight_electron(*ele,rhopog))) continue;
+        tightleps.push_back((const reco::Candidate*)&lele);
+      }
+      //====================================================
+
+
+      // =================== Jets =========================
+      //Get the good jets of the event
+      //Iterate to access jet by decreasing b-tagging value
+      int jet_pos = 0; //This counter helps to order jets
+      int jet_num = 0; //This counter accounts for the number of good jets in the events
+      //The definition of good jet in the event must be the same of the TTHbb analysis
+      //so that jet_num corresponds to the number of jets that define the categories in the TTHbb search
+      int jetb_num = 0;
+      vector<pair<double,int> > jet_csv_pos;
+      vector<pair<double,int> > jet_cmva_pos;
+
+
+      //Check memory address is changing for each systematic.
+
+      int jetcounter = 0;
+      for(const pat::Jet &j : *jets){
+        int vtxsize = vtx_h->size();
+        double jetpt = 0;
+        ++jetcounter;
+
+        // temp_JECUnc's now needs to be copied into is_good_jet method so pointer to
+        // JetCorrectionUncertainty points at memory block of relevant JEC unc. source.
+        if(!is_good_jet(j,rhopog,rhoJER,vtxsize,iSetup,jetpt, temp_JECUncMC, temp_JECUncDATA, sysUncSources[i], updown[k])){jet_pos++; continue;}
+        bool jetmatchedlepts = false;
+        for(uint gl=0; gl<looseleps.size(); gl++) if(deltaR(looseleps[gl]->p4(),j.p4())<0.4) jetmatchedlepts = true;
+        if(jetmatchedlepts){jet_pos++; continue;}
+        double csvcurrjet = j.bDiscriminator("pfCombinedInclusiveSecondaryVertexV2BJetTags");
+        jet_csv_pos.push_back(make_pair(csvcurrjet,jet_pos));
+        double cmvacurrjet = j.bDiscriminator("pfCombinedMVAV2BJetTags");
+        jet_cmva_pos.push_back(make_pair(cmvacurrjet,jet_pos));
+        if(csvcurrjet>0.8484) jetb_num++;
+        jet_pos++;
+        jet_num++;
+      }
+      //cout << "# jets = " << jet_num << endl;
+      //=======================================================
+
+      /////
+      //   Select only TTHbb events (mainly lep sel)
+      /////
+
+      //This selection should be changed for dilepton analysis.
+      if(!(tightleps.size()==1 && looseleps.size()==1 && jet_num>=4 && jetb_num>=2)){
+
+
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+
+
+        /*BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);*/
+
+        ////////////////////////////////////////////////
+        //cout << "Event from systematic variation "<< sysUncSources[i] << " failed event selection." << endl;
+        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        BJetnessValueJECSysts->push_back(bJetnessVariables);
+        //cout << "Put bJetness object into Event" << endl;
+        //iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
+        //iEvent.put(BJetnessValues,"BJetnessValue");
+        //return;
+        continue;
+      }
+
+      /////
+      //   You need to provide as input the jets selected in the event (selection according to the TTHbb analysis),
+      //   which have to be ordered by decreasing b-tagging value
+      /////
+
+      sort(jet_csv_pos.rbegin(), jet_csv_pos.rend());//Order by descreasing csv value
+      if(jet_num!=0){
+        /////
+        //   Definition of BJetness variables
+        //   NOTE: Highest CSV jet excluded (start from jn=1 below) and consider up to 6th jet in an event (optimised for single lepton)
+        /////
+        vector<pat::Jet> evtjets; evtjets.clear();
+        int maxjetnum = 6;
+        if(jet_num<maxjetnum) maxjetnum = jet_num;
+        for(int jn=1; jn<maxjetnum; jn++) evtjets.push_back((*jets)[jet_csv_pos[jn].second]);
+        //Define the variables you want to access
+        double bjetnessFV_num_leps        = -1;
+        double bjetnessFV_npvTrkOVcollTrk = -1;
+        double bjetnessFV_pvTrkOVcollTrk = -1;
+        double bjetnessFV_npvTrkOVpvTrk =-1;
+        double bjetnessFV_npvPtOVcollPt =-1;
+        double bjetnessFV_pvPtOVcollPt = -1;
+        double bjetnessFV_npvPtOVpvPt =-1;
+        double bjetnessFV_avip3d_val      = -1;
+        double bjetnessFV_avip3d_sig      = -1;
+        double bjetnessFV_avsip3d_val     = -1;
+        double bjetnessFV_avsip3d_sig     = -1;
+
+        double bjetnessFV_avip2d_val      = -1;
+        double bjetnessFV_avip2d_sig      = -1;
+        double bjetnessFV_avsip2d_val      = -1;
+        double bjetnessFV_avsip2d_sig      = -1;
+
+        double bjetnessFV_avip1d_val      = -1;
+        double bjetnessFV_avip1d_sig      = -1;
+        double bjetnessFV_avsip1d_val      = -1;
+        double bjetnessFV_avsip1d_sig      = -1;
+
+        //This is the method to access the BJetness variables
+        get_bjetness_vars(
+          //Inputs:
+          evtjets,      //Jets used to build the BJetness jets
+          PV,           //Prinary vertex of the event
+          *ttrkbuilder, //Transient tracker builder to measure impact parameters
+          electron_pat, muon_h, //Leptons collections to count the number of electrons and muons
+          //BJetness variables
+          bjetnessFV_num_leps, bjetnessFV_npvTrkOVcollTrk, bjetnessFV_pvTrkOVcollTrk, bjetnessFV_avip3d_val, bjetnessFV_avip3d_sig, bjetnessFV_avsip3d_val, bjetnessFV_avsip3d_sig, bjetnessFV_avip2d_val, bjetnessFV_avip2d_sig, bjetnessFV_avsip2d_val, bjetnessFV_avsip2d_sig, bjetnessFV_avip1d_val, bjetnessFV_avip1d_sig, bjetnessFV_avsip1d_val, bjetnessFV_avsip1d_sig, bjetnessFV_npvTrkOVpvTrk, bjetnessFV_npvPtOVcollPt, bjetnessFV_pvPtOVcollPt, bjetnessFV_npvPtOVpvPt
+        );
+        bjetnessFV_num_leps = 2;
+        //Fill the quantities for the event
+
+        ///////////////////////////////////////////////////////////////
+        // # soft Bjetness leptons
+        bJetnessVariables.push_back(bjetnessFV_num_leps);
+        // # trks and pt of tracks PV vs. NPV ratios
+        bJetnessVariables.push_back(bjetnessFV_npvTrkOVcollTrk);
+        bJetnessVariables.push_back(bjetnessFV_pvTrkOVcollTrk);
+        bJetnessVariables.push_back(bjetnessFV_npvTrkOVpvTrk);
+        bJetnessVariables.push_back(bjetnessFV_npvPtOVcollPt);
+        bJetnessVariables.push_back(bjetnessFV_pvPtOVcollPt);
+        bJetnessVariables.push_back(bjetnessFV_npvPtOVpvPt);
+        // 3D Impact Parameter Variables
+        bJetnessVariables.push_back(bjetnessFV_avip3d_val);
+        bJetnessVariables.push_back(bjetnessFV_avip3d_sig);
+        bJetnessVariables.push_back(bjetnessFV_avsip3d_val);
+        bJetnessVariables.push_back(bjetnessFV_avsip3d_sig);
+        // 2D Impact Parameter Variables
+        bJetnessVariables.push_back(bjetnessFV_avip2d_val);
+        bJetnessVariables.push_back(bjetnessFV_avip2d_sig);
+        bJetnessVariables.push_back(bjetnessFV_avsip2d_val);
+        bJetnessVariables.push_back(bjetnessFV_avsip2d_sig);
+        // 1D Impact Parameter Variables
+        bJetnessVariables.push_back(bjetnessFV_avip1d_val);
+        bJetnessVariables.push_back(bjetnessFV_avip1d_sig);
+        bJetnessVariables.push_back(bjetnessFV_avsip1d_val);
+        bJetnessVariables.push_back(bjetnessFV_avsip1d_sig);
+
+
+        /*BJetnessValues->push_back(bjetnessFV_num_leps);
+        BJetnessValues->push_back(bjetnessFV_npvTrkOVcollTrk);
+        BJetnessValues->push_back(bjetnessFV_pvTrkOVcollTrk);
+        BJetnessValues->push_back(bjetnessFV_npvTrkOVpvTrk);
+        BJetnessValues->push_back(bjetnessFV_npvPtOVcollPt);
+        BJetnessValues->push_back(bjetnessFV_pvPtOVcollPt);
+        BJetnessValues->push_back(bjetnessFV_npvPtOVpvPt);
+
+        //ImpactParameter
+        BJetnessValues->push_back(bjetnessFV_avip3d_val);
+        BJetnessValues->push_back(bjetnessFV_avip3d_sig);
+        BJetnessValues->push_back(bjetnessFV_avsip3d_val);
+        BJetnessValues->push_back(bjetnessFV_avsip3d_sig);
+
+        BJetnessValues->push_back(bjetnessFV_avip2d_val);
+        BJetnessValues->push_back(bjetnessFV_avip2d_sig);
+        BJetnessValues->push_back(bjetnessFV_avsip2d_val);
+        BJetnessValues->push_back(bjetnessFV_avsip2d_sig);
+
+        BJetnessValues->push_back(bjetnessFV_avip1d_val);
+        BJetnessValues->push_back(bjetnessFV_avip1d_sig);
+        BJetnessValues->push_back(bjetnessFV_avsip1d_val);
+        BJetnessValues->push_back(bjetnessFV_avsip1d_sig);*/
+
+        ///////////////////////////////////////////////////////////////
+        //cout << "Event passed." << endl;
+        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        BJetnessValueJECSysts->push_back(bJetnessVariables);
+        ///////////////////////////////////////////////////////////////
+
+      }else{//if(jet_num!=0)
+
+        /*BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);*/
+
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+        bJetnessVariables.push_back(-999);
+
+        //cout << "Event from systematic variation "<< sysUncSources[i] << " failed due to number of jets < 4." << endl;
+        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        BJetnessValueJECSysts->push_back(bJetnessVariables);
+
+      }
+    }// End of variation up/down loop.
+  }//End of uncertainty source loop.
+  /*cout << "======= Final BJetnessValueJECSysts =======" << endl;
+  cout << "No. JEC Systematics = " << BJetnessValueJECSysts->size() << endl;
+  for (uint o=0; o<BJetnessValueJECSysts->size(); o++){
+    cout << "=========== Systematic # " << o << " ==========" << endl;
+    cout << "No. BJetness Variables = " << (BJetnessValueJECSysts->at(o)).size() << endl;
+    for (uint p=0; p<(BJetnessValueJECSysts->at(o)).size(); p++){
+      cout << "=========== BJetness variable # " << p << " ==========" << (BJetnessValueJECSysts->at(o)).at(p) << " , ";
+    }
+    cout << " " << endl;
   }
-  if(firstgoodVertex == vtx_h->end()){
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    iEvent.put(BJetnessValues,"BJetnessValue");
-    return;
-  }
-  const reco::Vertex &PV = vtx_h->front(); //It still takes the first vertex
-
-
-  //Look for muons, electrons
-  vector<const reco::Candidate*> looseleps;
-  vector<const reco::Candidate*> tightleps;
-
-
-  //================ Muons ======================
-  for(const pat::Muon &mu : *muon_h){
-    if(!is_loose_muon(mu,PV)) continue;
-    looseleps.push_back((const reco::Candidate*)&mu);
-    if(!is_tight_muon(mu,PV)) continue;
-    tightleps.push_back((const reco::Candidate*)&mu);
-  }
-  //====================================================
-
-
-
-  //================ Electrons ==================
-
-  for(edm::View<pat::Electron>::const_iterator ele = electron_pat->begin(); ele != electron_pat->end(); ele++){
-    const Ptr<pat::Electron> elPtr(electron_pat, ele - electron_pat->begin() );
-    bool isPassEletrig = (*tight_id_decisions)[ elPtr ];
-    const pat::Electron &lele = *ele;
-    if(!(isPassEletrig)) continue;
-    if(!(is_loose_electron(*ele,rhopog))) continue;
-    if(!(rel_iso_dbc_ele(*ele,rhopog)<0.15)) continue;
-    looseleps.push_back((const reco::Candidate*)&lele);
-    if(!(is_tight_electron(*ele,rhopog))) continue;
-    tightleps.push_back((const reco::Candidate*)&lele);
-  }
-  //====================================================
-
-
-  // =================== Jets =========================
-  //Get the good jets of the event
-  //Iterate to access jet by decreasing b-tagging value
-  int jet_pos = 0; //This counter helps to order jets
-  int jet_num = 0; //This counter accounts for the number of good jets in the events
-                   //The definition of good jet in the event must be the same of the TTHbb analysis
-                   //so that jet_num corresponds to the number of jets that define the categories in the TTHbb search
-  int jetb_num = 0;
-  vector<pair<double,int> > jet_csv_pos;
-  vector<pair<double,int> > jet_cmva_pos;
-  for(const pat::Jet &j : *jets){
-    int vtxsize = vtx_h->size();
-    double jetpt = 0;
-    if(!is_good_jet(j,rhopog,rhoJER,vtxsize,iSetup,jetpt)){jet_pos++; continue;}
-    bool jetmatchedlepts = false;
-    for(uint gl=0; gl<looseleps.size(); gl++) if(deltaR(looseleps[gl]->p4(),j.p4())<0.4) jetmatchedlepts = true;
-    if(jetmatchedlepts){jet_pos++; continue;}
-    double csvcurrjet = j.bDiscriminator("pfCombinedInclusiveSecondaryVertexV2BJetTags");
-    jet_csv_pos.push_back(make_pair(csvcurrjet,jet_pos));
-    double cmvacurrjet = j.bDiscriminator("pfCombinedMVAV2BJetTags");
-    jet_cmva_pos.push_back(make_pair(cmvacurrjet,jet_pos));
-    if(csvcurrjet>0.8484) jetb_num++;
-    jet_pos++;
-    jet_num++;
-  }
-  //=======================================================
-
-  /////
-  //   Select only TTHbb events (mainly lep sel)
-  /////
-
-  //This selection should be changed for dilepton analysis.
-  if(!(tightleps.size()==1 && looseleps.size()==1 && jet_num>=4 && jetb_num>=2)){
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    iEvent.put(BJetnessValues,"BJetnessValue");
-    return;
-  }
-
-  /////
-  //   You need to provide as input the jets selected in the event (selection according to the TTHbb analysis),
-  //   which have to be ordered by decreasing b-tagging value
-  /////
-
-  sort(jet_csv_pos.rbegin(), jet_csv_pos.rend());//Order by descreasing csv value
-  if(jet_num!=0){
-    /////
-    //   Definition of BJetness variables
-    //   NOTE: Highest CSV jet excluded (start from jn=1 below) and consider up to 6th jet in an event (optimised for single lepton)
-    /////
-    vector<pat::Jet> evtjets; evtjets.clear();
-    int maxjetnum = 6;
-    if(jet_num<maxjetnum) maxjetnum = jet_num;
-    for(int jn=1; jn<maxjetnum; jn++) evtjets.push_back((*jets)[jet_csv_pos[jn].second]);
-    //Define the variables you want to access
-    double bjetnessFV_num_leps        = -1;
-    double bjetnessFV_npvTrkOVcollTrk = -1;
-    double bjetnessFV_pvTrkOVcollTrk = -1;
-    double bjetnessFV_npvTrkOVpvTrk =-1;
-    double bjetnessFV_npvPtOVcollPt =-1;
-    double bjetnessFV_pvPtOVcollPt = -1;
-    double bjetnessFV_npvPtOVpvPt =-1;
-    double bjetnessFV_avip3d_val      = -1;
-    double bjetnessFV_avip3d_sig      = -1;
-    double bjetnessFV_avsip3d_val     = -1;
-    double bjetnessFV_avsip3d_sig     = -1;
-
-    double bjetnessFV_avip2d_val      = -1;
-    double bjetnessFV_avip2d_sig      = -1;
-    double bjetnessFV_avsip2d_val      = -1;
-    double bjetnessFV_avsip2d_sig      = -1;
-
-    double bjetnessFV_avip1d_val      = -1;
-    double bjetnessFV_avip1d_sig      = -1;
-    double bjetnessFV_avsip1d_val      = -1;
-    double bjetnessFV_avsip1d_sig      = -1;
-
-   //This is the method to access the BJetness variables
-    get_bjetness_vars(
-                      //Inputs:
-                      evtjets,      //Jets used to build the BJetness jets
-                      PV,           //Prinary vertex of the event
-                      *ttrkbuilder, //Transient tracker builder to measure impact parameters
-                      electron_pat, muon_h, //Leptons collections to count the number of electrons and muons
-                      //BJetness variables
-                      bjetnessFV_num_leps, bjetnessFV_npvTrkOVcollTrk, bjetnessFV_pvTrkOVcollTrk, bjetnessFV_avip3d_val, bjetnessFV_avip3d_sig, bjetnessFV_avsip3d_val, bjetnessFV_avsip3d_sig, bjetnessFV_avip2d_val, bjetnessFV_avip2d_sig, bjetnessFV_avsip2d_val, bjetnessFV_avsip2d_sig, bjetnessFV_avip1d_val, bjetnessFV_avip1d_sig, bjetnessFV_avsip1d_val, bjetnessFV_avsip1d_sig, bjetnessFV_npvTrkOVpvTrk, bjetnessFV_npvPtOVcollPt, bjetnessFV_pvPtOVcollPt, bjetnessFV_npvPtOVpvPt
-                     );
-    //Fill the quantities for the event
-    //Num_of_trks
-    BJetnessValues->push_back(bjetnessFV_num_leps);
-    BJetnessValues->push_back(bjetnessFV_npvTrkOVcollTrk);
-    BJetnessValues->push_back(bjetnessFV_pvTrkOVcollTrk);
-    BJetnessValues->push_back(bjetnessFV_npvTrkOVpvTrk);
-    BJetnessValues->push_back(bjetnessFV_npvPtOVcollPt);
-    BJetnessValues->push_back(bjetnessFV_pvPtOVcollPt);
-    BJetnessValues->push_back(bjetnessFV_npvPtOVpvPt);
-
-    //ImpactParameter
-    BJetnessValues->push_back(bjetnessFV_avip3d_val);
-    BJetnessValues->push_back(bjetnessFV_avip3d_sig);
-    BJetnessValues->push_back(bjetnessFV_avsip3d_val);
-    BJetnessValues->push_back(bjetnessFV_avsip3d_sig);
-
-    BJetnessValues->push_back(bjetnessFV_avip2d_val);
-    BJetnessValues->push_back(bjetnessFV_avip2d_sig);
-    BJetnessValues->push_back(bjetnessFV_avsip2d_val);
-    BJetnessValues->push_back(bjetnessFV_avsip2d_sig);
-
-    BJetnessValues->push_back(bjetnessFV_avip1d_val);
-    BJetnessValues->push_back(bjetnessFV_avip1d_sig);
-    BJetnessValues->push_back(bjetnessFV_avsip1d_val);
-    BJetnessValues->push_back(bjetnessFV_avsip1d_sig);
-
-
-  }else{//if(jet_num!=0)
-    BJetnessValues->push_back(-999);
-    //Num_of_trks
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    //ImpactParameter
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-    BJetnessValues->push_back(-999);
-  }
-  //Save bjetness vars in evt
-  iEvent.put(BJetnessValues,"BJetnessValue");
+  cout << "=====================================" << endl;
+  cout << "Put bJetness object into Event" << endl;*/
+  iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
+  //iEvent.put(BJetnessValues,"BJetnessValue");
 }
+
 /////
 //   Methods to be aligned to the TTHbb selection
 /////
@@ -525,22 +870,43 @@ double BJetness::get_effarea(double eta){
   else                      effarea = 0.2687;
   return effarea;
 }
-//Require good jets (according to TTHbb analysis)
-//This function has to be updated in order to select good jet using the TTHbb definition
-bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double& jetpt){
+
+
+// Require good jets (according to TTHbb analysis)
+bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double& jetpt, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC_, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA_, string sysUncSource_, string is_updown_){
+
   bool isgoodjet = true;
+
   //Jet Energy Corrections and Uncertainties
   double corrAK4PFchs     = 1;
+  double corrAK4PFchs_Unc = 1;
+
+  //==================================Factorised JES Unc.=========================================
+
   reco::Candidate::LorentzVector uncorrJetAK4PFchs = j.correctedP4(0);
   if(!_is_data){
-    jecAK4PFchsMC_->setJetEta( uncorrJetAK4PFchs.eta()    );
-    jecAK4PFchsMC_->setJetPt ( uncorrJetAK4PFchs.pt()     );
+    jecAK4PFchsMC_->setJetEta( uncorrJetAK4PFchs.eta() );
+    jecAK4PFchsMC_->setJetPt ( uncorrJetAK4PFchs.pt() );
     jecAK4PFchsMC_->setJetE  ( uncorrJetAK4PFchs.energy() );
-    jecAK4PFchsMC_->setRho      ( rho  );
-    jecAK4PFchsMC_->setNPV      ( vtxsize  );
-    jecAK4PFchsMC_->setJetA  ( j.jetArea()           );
+    jecAK4PFchsMC_->setRho( rho  );
+    jecAK4PFchsMC_->setNPV( vtxsize  );
+    jecAK4PFchsMC_->setJetA( j.jetArea() );
     corrAK4PFchs = jecAK4PFchsMC_->getCorrection();
-  } else {
+
+    if(sysUncSource_!="Nominal"){
+      if (is_updown_.find("_UP_") != std::string::npos) {
+        temp_JECUncMC_->setJetEta( uncorrJetAK4PFchs.eta() );
+        temp_JECUncMC_->setJetPt( corrAK4PFchs * uncorrJetAK4PFchs.pt() );
+        corrAK4PFchs_Unc = corrAK4PFchs * (1 + fabs(temp_JECUncMC_->getUncertainty(1)));
+      }
+      else if (is_updown_.find("_DOWN_") != std::string::npos) {
+        temp_JECUncMC_->setJetEta( uncorrJetAK4PFchs.eta() );
+        temp_JECUncMC_->setJetPt( corrAK4PFchs * uncorrJetAK4PFchs.pt() );
+        corrAK4PFchs_Unc = corrAK4PFchs * ( 1 - fabs(temp_JECUncMC_->getUncertainty(-1)) );
+      }
+    }
+  }
+  else {
     jecAK4PFchsDATA_->setJetEta( uncorrJetAK4PFchs.eta()    );
     jecAK4PFchsDATA_->setJetPt ( uncorrJetAK4PFchs.pt()     );
     jecAK4PFchsDATA_->setJetE  ( uncorrJetAK4PFchs.energy() );
@@ -548,15 +914,44 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
     jecAK4PFchsDATA_->setNPV    ( vtxsize  );
     jecAK4PFchsDATA_->setJetA  ( j.jetArea()         );
     corrAK4PFchs = jecAK4PFchsDATA_->getCorrection();
+
+    //====================================Factorised JES===========================================
+
+    if(sysUncSource_!="Nominal"){
+      if (is_updown_.find("_UP_") != std::string::npos) {
+        temp_JECUncDATA_->setJetEta( uncorrJetAK4PFchs.eta() );
+        temp_JECUncDATA_->setJetPt( corrAK4PFchs * uncorrJetAK4PFchs.pt() );
+        corrAK4PFchs_Unc = corrAK4PFchs * (1 + fabs(temp_JECUncDATA_->getUncertainty(1)));
+      }
+      else if (is_updown_.find("_DOWN_") != std::string::npos) {
+        temp_JECUncDATA_->setJetEta( uncorrJetAK4PFchs.eta() );
+        temp_JECUncDATA_->setJetPt( corrAK4PFchs * uncorrJetAK4PFchs.pt() );
+        corrAK4PFchs_Unc = corrAK4PFchs * ( 1 - fabs(temp_JECUncDATA_->getUncertainty(-1)) );
+      }
+    }
   }
+
+  //Depending on whether the nominal or one of the systematics is running, select which weight (corrAK4PFchs_XXXXX) to use.
   float JERScaleFactor     = 1;
   float JERScaleFactorUP   = 1;
   float JERScaleFactorDOWN = 1;
   if(!_is_data) GetJER(j, corrAK4PFchs, rhoJER, true, JERScaleFactor, JERScaleFactorUP, JERScaleFactorDOWN, iSetup);
+
+
   //Acceptance
-  jetpt = (j.correctedJet("Uncorrected").pt()*corrAK4PFchs*JERScaleFactor);
+  if(sysUncSource_=="Nominal"){
+    jetpt = (j.correctedJet("Uncorrected").pt()*corrAK4PFchs*JERScaleFactor);
+    //cout << "Nominal jetpt = " << jetpt << endl;
+  }
+  else {
+    jetpt = (j.correctedJet("Uncorrected").pt()*corrAK4PFchs_Unc*JERScaleFactor);
+    //cout << sysUncSource_ << " jetpt = " << jetpt << endl;
+  }
+  //std::cout << "jetpt = " << jetpt << std::endl;
   if(jetpt < 30)       isgoodjet = false; //PLEASE NOTE: that this requirement is for the SL channel, while for DL channel we require pT > 20!
   if(fabs(j.eta())>2.4) isgoodjet = false;
+
+
   //ID requirements
   if(j.neutralHadronEnergyFraction() >= 0.99) isgoodjet = false;
   if(j.chargedEmEnergyFraction()     >= 0.99) isgoodjet = false;
@@ -564,11 +959,14 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
   if(j.numberOfDaughters()           <= 1)    isgoodjet = false;
   if(j.chargedHadronEnergyFraction() <= 0.0)  isgoodjet = false;
   if(j.chargedMultiplicity()         <= 0.0)  isgoodjet = false;
+
   //cout<<setw(20)<<"Jet pt,eta,phi"<<setw(20)<<jetpt<<setw(20)<<j.eta()<<setw(20)<<j.phi()<<endl;
+
   return isgoodjet;
 }
-void BJetness::JECInitialization() {
+void BJetness::JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsMC, std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsDATA) {
   // Procedure for running JEC and JECUnc on crab: https://twiki.cern.ch/twiki/bin/view/CMSPublic/WorkBookJetEnergyCorrections#JetEnCorFWLite
+
   //AK4chs - MC: Get the factorized jet corrector parameters.
   std::vector<std::string> jecPayloadNamesAK4PFchsMC_;
   jecPayloadNamesAK4PFchsMC_.push_back(jecPayloadNamesAK4PFchsMC1_.fullPath());
@@ -576,12 +974,60 @@ void BJetness::JECInitialization() {
   jecPayloadNamesAK4PFchsMC_.push_back(jecPayloadNamesAK4PFchsMC3_.fullPath());
   std::vector<JetCorrectorParameters> vParAK4PFchsMC;
   for ( std::vector<std::string>::const_iterator payloadBegin = jecPayloadNamesAK4PFchsMC_.begin(),
-          payloadEnd = jecPayloadNamesAK4PFchsMC_.end(), ipayload = payloadBegin; ipayload != payloadEnd; ++ipayload ) {
+  payloadEnd = jecPayloadNamesAK4PFchsMC_.end(), ipayload = payloadBegin; ipayload != payloadEnd; ++ipayload ) {
     JetCorrectorParameters pars(*ipayload);
     vParAK4PFchsMC.push_back(pars);
   }
   jecAK4PFchsMC_    = boost::shared_ptr<FactorizedJetCorrector>  ( new FactorizedJetCorrector(vParAK4PFchsMC) );
-  jecAK4PFchsMCUnc_ = boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(jecPayloadNamesAK4PFchsMCUnc_.fullPath()) );
+
+  jecAK4PFchsMCUnc_   = boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "Total"))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "Total")))));
+  //=============================================================================
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "AbsoluteStat")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "AbsoluteScale")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "AbsoluteFlavMap")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "AbsoluteMPFBias")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "Fragmentation")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "SinglePionECAL")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "SinglePionHCAL")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "FlavorQCD")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "TimePtEta")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativeJEREC1")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativeJEREC2")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativeJERHF")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativePtBB")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativePtEC1")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativePtEC2")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativePtHF")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativeBal")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativeFSR")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativeStatFSR")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativeStatEC")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "RelativeStatHF")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "PileUpDataMC")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "PileUpPtRef")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "PileUpPtBB")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "PileUpPtEC1")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "PileUpPtEC2")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "PileUpPtHF")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "PileUpMuZero")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "PileUpEnvelope")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "SubTotalPileUp")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "SubTotalRelative")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "SubTotalPt")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "SubTotalScale")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "SubTotalAbsolute")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "SubTotalMC")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "TotalNoFlavor")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "TotalNoFlavorNoTime")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "FlavorZJet")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "FlavorPhotonJet")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "FlavorPureGluon")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "FlavorPureQuark")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "FlavorPureCharm")))));
+  factorisedJECsMC.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsMCUnc_.fullPath(), "FlavorPureBottom")))));
+  //=============================================================================
+
   //AK4chs - DATA: Get the factorized jet corrector parameters.
   std::vector<std::string> jecPayloadNamesAK4PFchsDATA_;
   jecPayloadNamesAK4PFchsDATA_.push_back(jecPayloadNamesAK4PFchsDATA1_.fullPath());
@@ -590,12 +1036,62 @@ void BJetness::JECInitialization() {
   jecPayloadNamesAK4PFchsDATA_.push_back(jecPayloadNamesAK4PFchsDATA4_.fullPath());
   std::vector<JetCorrectorParameters> vParAK4PFchsDATA;
   for ( std::vector<std::string>::const_iterator payloadBegin = jecPayloadNamesAK4PFchsDATA_.begin(),
-          payloadEnd = jecPayloadNamesAK4PFchsDATA_.end(), ipayload = payloadBegin; ipayload != payloadEnd; ++ipayload ) {
+	  payloadEnd = jecPayloadNamesAK4PFchsDATA_.end(), ipayload = payloadBegin; ipayload != payloadEnd; ++ipayload ) {
     JetCorrectorParameters pars(*ipayload);
     vParAK4PFchsDATA.push_back(pars);
   }
+
   jecAK4PFchsDATA_    = boost::shared_ptr<FactorizedJetCorrector>  ( new FactorizedJetCorrector(vParAK4PFchsDATA) );
-  jecAK4PFchsDATAUnc_ = boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(jecPayloadNamesAK4PFchsDATAUnc_.fullPath()) );
+  jecAK4PFchsDATAUnc_ = boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "Total"))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "Total")))));
+  //=============================================================================
+  //jecAK4PFchsDATAUnc_AbsoluteStat   = boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "AbsoluteStat"))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "AbsoluteStat")))));
+  //=============================================================================
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "AbsoluteScale")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "AbsoluteFlavMap")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "AbsoluteMPFBias")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "Fragmentation")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "SinglePionECAL")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "SinglePionHCAL")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorQCD")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "TimePtEta")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativeJEREC1")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativeJEREC2")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativeJERHF")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativePtBB")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativePtEC1")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativePtEC2")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativePtHF")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativeBal")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativeFSR")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativeStatFSR")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativeStatEC")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "RelativeStatHF")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "PileUpDataMC")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "PileUpPtRef")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "PileUpPtBB")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "PileUpPtEC1")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "PileUpPtEC2")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "PileUpPtHF")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "PileUpMuZero")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "PileUpEnvelope")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "SubTotalPileUp")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "SubTotalRelative")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "SubTotalPt")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "SubTotalScale")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "SubTotalAbsolute")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "SubTotalMC")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "TotalNoFlavor")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "TotalNoFlavorNoTime")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorZJet")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPhotonJet")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureGluon")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureQuark")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureCharm")))));
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureBottom")))));
+  //=============================================================================
+
 }
 void BJetness::GetJER(pat::Jet jet, float JesSF, float rhoJER, bool AK4PFchs, float &JERScaleFactor, float &JERScaleFactorUP, float &JERScaleFactorDOWN, const edm::EventSetup& iSetup){
   if(!jet.genJet()) return;
@@ -691,7 +1187,6 @@ void BJetness::GetJER(pat::Jet jet, float JesSF, float rhoJER, bool AK4PFchs, fl
 void BJetness::get_bjetness_vars(vector<pat::Jet> evtjets, const reco::Vertex& vtx, const TransientTrackBuilder& ttrkbuilder, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h,
                                            double& bjetnessFV_num_leps, double& bjetnessFV_npvTrkOVcollTrk, double& bjetnessFV_pvTrkOVcollTrk, double& bjetnessFV_avip3d_val, double& bjetnessFV_avip3d_sig, double& bjetnessFV_avsip3d_val, double& bjetnessFV_avsip3d_sig, double& bjetnessFV_avip2d_val, double& bjetnessFV_avip2d_sig, double& bjetnessFV_avsip2d_val, double& bjetnessFV_avsip2d_sig, double& bjetnessFV_avip1d_val, double& bjetnessFV_avip1d_sig, double& bjetnessFV_avsip1d_val, double& bjetnessFV_avsip1d_sig, double &bjetnessFV_npvTrkOVpvTrk , double &bjetnessFV_npvPtOVcollPt , double &bjetnessFV_pvPtOVcollPt , double &bjetnessFV_npvPtOVpvPt
                                           ){
-  //Get BJetness trk info
   vector<Track> jetschtrks; jetschtrks.clear();
   vector<Track> jetschtrkspv;
   vector<Track> jetschtrksnpv;
@@ -700,21 +1195,25 @@ void BJetness::get_bjetness_vars(vector<pat::Jet> evtjets, const reco::Vertex& v
   double num_eles    = 0;
   double num_mus     = 0;
   vector<tuple<double, double, double> > jetsdir; jetsdir.clear();
+
+  // Select jet tracks (PV and non-PV associated) + count leptons.
   get_bjetness_trkinfos(evtjets, vtx, jetschtrks, num_pvtrks, num_npvtrks, electron_pat, muon_h, num_eles, num_mus, jetsdir, jetschtrkspv, jetschtrksnpv);
+
   bjetnessFV_num_leps = num_eles+num_mus;
+
+
+  // Construct PV & NPV fraction variables.
   if(jetschtrks.size()!=0){
     bjetnessFV_npvTrkOVcollTrk       = num_npvtrks/double(jetschtrks.size());
     bjetnessFV_pvTrkOVcollTrk       = num_pvtrks/double(jetschtrks.size());
     bjetnessFV_npvTrkOVpvTrk        = num_npvtrks/num_pvtrks;
 
-
     double ptjettrks    = 0;
-    for(uint jt=0; jt<jetschtrks.size(); jt++) ptjettrks += jetschtrks[jt].pt();
     double ptjettrkspv    = 0;
-    for(uint jt=0; jt<num_pvtrks; jt++) ptjettrkspv += jetschtrkspv[jt].pt();
     double ptjettrksnpv    = 0;
+    for(uint jt=0; jt<jetschtrks.size(); jt++) ptjettrks += jetschtrks[jt].pt();
+    for(uint jt=0; jt<num_pvtrks; jt++) ptjettrkspv += jetschtrkspv[jt].pt();
     for(uint jt=0; jt<num_npvtrks; jt++) ptjettrksnpv += jetschtrksnpv[jt].pt();
-
 
     if(ptjettrks!=0) bjetnessFV_npvPtOVcollPt = ptjettrksnpv/ptjettrks;
     else             bjetnessFV_npvPtOVcollPt = -997;
@@ -723,10 +1222,10 @@ void BJetness::get_bjetness_vars(vector<pat::Jet> evtjets, const reco::Vertex& v
     if(ptjettrkspv!=0) bjetnessFV_npvPtOVpvPt = ptjettrksnpv/ptjettrkspv;
     else               bjetnessFV_npvPtOVpvPt = -997;
 
-    //Get BJetness Impact Parameters
-    double ip_valtemp = 0;
 
-    //3D
+    //================= IMPACT PARAMETERS ================
+    //================= 3D Variables =================
+    double ip_valtemp = 0;
     double jetchtrks_avip3d_val  = 0;
     double jetchtrks_avip3d_sig  = 0;
     double jetchtrks_avsip3d_val = 0;
@@ -744,8 +1243,6 @@ void BJetness::get_bjetness_vars(vector<pat::Jet> evtjets, const reco::Vertex& v
     ip_valtemp = jetchtrks_avsip3d_sig/jetschtrks.size();
     if(ip_valtemp==ip_valtemp) bjetnessFV_avsip3d_sig = ip_valtemp;
     else                       bjetnessFV_avsip3d_sig = -996;
-
-
 
     //================= 2D Variables =================
     double jetchtrks_avip2d_val  = 0;
@@ -766,7 +1263,7 @@ void BJetness::get_bjetness_vars(vector<pat::Jet> evtjets, const reco::Vertex& v
     if(ip_valtemp==ip_valtemp) bjetnessFV_avsip2d_sig = ip_valtemp;
     else                       bjetnessFV_avsip2d_sig = -996;
 
-    //BJetness 1D Variables
+    //================= 1D Variables =================
     double jetchtrks_avip1d_val  = 0;
     double jetchtrks_avip1d_sig  = 0;
     double jetchtrks_avsip1d_val  = 0;
@@ -785,7 +1282,8 @@ void BJetness::get_bjetness_vars(vector<pat::Jet> evtjets, const reco::Vertex& v
     if(ip_valtemp==ip_valtemp) bjetnessFV_avsip1d_sig = ip_valtemp;
     else                       bjetnessFV_avsip1d_sig = -996;
 
-  }else{
+  }
+  else{
     bjetnessFV_npvTrkOVcollTrk       = -998;
     bjetnessFV_pvTrkOVcollTrk       = -998;
     bjetnessFV_npvTrkOVpvTrk =-998;
@@ -802,7 +1300,11 @@ void BJetness::get_bjetness_vars(vector<pat::Jet> evtjets, const reco::Vertex& v
     bjetnessFV_avsip1d_sig            = -998;
   }
 }
-//Get the BJetness trk info
+
+
+
+
+
 void BJetness::get_bjetness_trkinfos(vector<pat::Jet> evtjets, const reco::Vertex& vtx, vector<Track>& jetchtrks, double& bjetness_num_pvtrks, double& bjetness_num_npvtrks, edm::Handle<edm::View<pat::Electron> > electron_pat, edm::Handle<edm::View<pat::Muon> > muon_h, double& bjetness_num_eles, double& bjetness_num_mus, vector<tuple<double, double, double> >& jetsdir, vector<Track>& jetchtrkspv, vector<Track>& jetchtrksnpv){
   //Loop over evt jet
   for(uint j=0; j<evtjets.size(); j++){
@@ -814,6 +1316,7 @@ void BJetness::get_bjetness_trkinfos(vector<pat::Jet> evtjets, const reco::Verte
 
     for(uint jd=0; jd<jdaus.size(); jd++){
       const pat::PackedCandidate &jcand = dynamic_cast<const pat::PackedCandidate &>(*jdaus[jd]);
+
       //dR requirement
       if(deltaR(jcand.p4(),jet.p4())>0.4) continue;
       Track trk = Track(jcand.pseudoTrack());
@@ -838,7 +1341,6 @@ void BJetness::get_bjetness_trkinfos(vector<pat::Jet> evtjets, const reco::Verte
       }//Ch trks
     }//Loop on jet daus
   }//Loop on evt jet
-
 }
 
 
@@ -855,7 +1357,7 @@ bool BJetness::is_goodtrk(Track trk,const reco::Vertex& vtx){
    ) isgoodtrk = true;
  return isgoodtrk;
 }
-//Look for loose muon (definition to look for candidates among jet daughters)
+//Loose muons (look for candidates among jet daughters)
 bool BJetness::is_loosePOG_jetmuon(const pat::PackedCandidate &jcand, edm::Handle<edm::View<pat::Muon> > muon_h){
   bool ismu = false;
   for(const pat::Muon &mu : *muon_h){
@@ -866,7 +1368,7 @@ bool BJetness::is_loosePOG_jetmuon(const pat::PackedCandidate &jcand, edm::Handl
   }
   return ismu;
 }
-//Look for loose electron ((definition to look for candidates among jet daughters)
+//Loose electrons (look for candidates among jet daughters)
 bool BJetness::is_softLep_jetelectron(const pat::PackedCandidate &jcand, edm::Handle<edm::View<pat::Electron> > electron_pat, const reco::Vertex& vtx){
   bool isele = false;
   for(edm::View<pat::Electron>::const_iterator ele = electron_pat->begin(); ele != electron_pat->end(); ele++){
@@ -1040,5 +1542,9 @@ BJetness::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   desc.setUnknown();
   descriptions.addDefault(desc);
 }
-//define this as a plug-in
+
+// ===== Declare producer to PluginManager =====
+// User should be able to compiled analysis code into same library as plugin.
+// All such plugins must have a "DEFINE_FWK_MODULE" declaration to
+// the PluginManager.
 DEFINE_FWK_MODULE(BJetness);

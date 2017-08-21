@@ -33,4 +33,6 @@
 <use name="rootmath"/>
 <use name="hepmc"/>
 <use name="rootcore"/>
-<flags EDM_PLUGIN="1"/>
+<export>
+  <lib   name="1"/>
+</export>
