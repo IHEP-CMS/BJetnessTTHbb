@@ -11,7 +11,7 @@
      [Notes on implementation]
 */
 //
-// Authors:  Francesco Romeo, Aniello Spiezia & Joshuha Thomas-Wilsker
+// Authors:  Francesco Romeo & Joshuha Thomas-Wilsker
 //         Created:  Sun, 30 Oct 2016 11:02:22 GMT
 //
 //
@@ -127,8 +127,7 @@ class BJetness : public edm::stream::EDProducer<> {
     static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
     // ===== Methods aligned to the TTHbb selection =====
-    //void JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsMC, std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsDATA);
-    void JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsMC);
+    void JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsMC, std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsDATA);
     void GetJER(pat::Jet jet, float JesSF, float rhoJER, bool AK4PFchs, float &JERScaleFactor, float &JERScaleFactorUP, float &JERScaleFactorDOWN, const edm::EventSetup& iSetup);
     bool isGoodVertex(const reco::Vertex& vtx);
     bool is_loose_muon(const pat::Muon& mu, const reco::Vertex& vtx);
@@ -138,8 +137,7 @@ class BJetness : public edm::stream::EDProducer<> {
     bool is_tight_electron(const pat::Electron& ele, double rhopog);//, const reco::Vertex& vtx);
     double rel_iso_dbc_ele(const pat::Electron& lepton, double rhopog);
     double get_effarea(double eta);
-    //bool is_good_jet(const pat::Jet &j, double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double & jetpt, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA, string sysUncSource_, string is_updown);
-    bool is_good_jet(const pat::Jet &j, double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double & jetpt, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC, string sysUncSource_, string is_updown);
+    bool is_good_jet(const pat::Jet &j, double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double & jetpt, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA, string sysUncSource_, string is_updown);
     //===========================================================
 
   private:
@@ -148,7 +146,7 @@ class BJetness : public edm::stream::EDProducer<> {
     virtual void endStream() override;
 
     // Ensure the class recognises containers we will book into event:
-    //typedef std::vector<float> FlavorJetnessValues;
+    typedef std::vector<float> FlavorJetnessValues;
     //JEC systematic variations of BJetness values.
     typedef std::vector< std::vector<float> > FlavorJetnessValues_JECSysts;
     //typedef std::vector< FlavorJetnessValues > FlavorJetnessValues_JECSysts;
@@ -183,13 +181,13 @@ class BJetness : public edm::stream::EDProducer<> {
     //===========================================================
 
     boost::shared_ptr<FactorizedJetCorrector>   jecAK4PFchsDATA_;
-    //boost::shared_ptr<JetCorrectionUncertainty> jecAK4PFchsDATAUnc_;
+    boost::shared_ptr<JetCorrectionUncertainty> jecAK4PFchsDATAUnc_;
     //===========================================================
-    //boost::shared_ptr<JetCorrectionUncertainty> jecAK4PFchsDATAUnc_AbsoluteStat;
+    boost::shared_ptr<JetCorrectionUncertainty> jecAK4PFchsDATAUnc_AbsoluteStat;
     //===========================================================
 
     std::vector<boost::shared_ptr<JetCorrectionUncertainty> > factorisedJECsMC_;
-    //std::vector<boost::shared_ptr<JetCorrectionUncertainty> > factorisedJECsDATA_;
+    std::vector<boost::shared_ptr<JetCorrectionUncertainty> > factorisedJECsDATA_;
 
 
     //Methods for the BJetness variables
@@ -242,11 +240,10 @@ BJetness::BJetness(const edm::ParameterSet& iConfig):
   jerAK4PFchsSF_                  = iConfig.getParameter<edm::FileInPath>("jerAK4PFchsSF").fullPath();
 
   //Instantiate JEC uncertainty sources and push into vectors:
-  //JECInitialization(factorisedJECsMC_ , factorisedJECsDATA_);
-  JECInitialization(factorisedJECsMC_);
+  JECInitialization(factorisedJECsMC_ , factorisedJECsDATA_);
 
   // Register class products with in framework.
-  //produces<FlavorJetnessValues>("BJetnessValue").setBranchAlias("BJetnessValues");
+  produces<FlavorJetnessValues>("BJetnessValue").setBranchAlias("BJetnessValues");
   produces<FlavorJetnessValues_JECSysts>("BJetnessValueJECSysts").setBranchAlias("BJetnessValueJECSysts");
   //produces<std::vector< std::vector<float> > >("BJetnessValueJECSysts").setBranchAlias("BJetnessValueJECSysts");
 
@@ -262,16 +259,16 @@ BJetness::~BJetness(){
 
 // ------------ Create, fill and put products into events ------------
 void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
-  //std::cout << "Event number = " << iEvent.id().event() << std::endl;
+  std::cout << "Event number = " << iEvent.id().event() << std::endl;
   //Store bjetness vars
-  //auto_ptr<FlavorJetnessValues> BJetnessValues( new FlavorJetnessValues );
+  auto_ptr<FlavorJetnessValues> BJetnessValues( new FlavorJetnessValues );
   auto_ptr<FlavorJetnessValues_JECSysts> BJetnessValueJECSysts( new FlavorJetnessValues_JECSysts );
   //auto_ptr<std::vector< std::vector<float> > > BJetnessValueJECSysts( new std::vector< std::vector<float> > );
 
   std::vector<float> bJetnessVariables;
 
-  const char* sysUncNames[] = {"Nominal",
-                              "Total",
+  const char* sysUncNames[] = {"Nominal"
+                              /*"Total",
                               "AbsoluteStat",
                               "AbsoluteScale",
                               "AbsoluteFlavMap",
@@ -314,8 +311,7 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
                               "FlavorPureGluon",
                               "FlavorPureQuark",
                               "FlavorPureCharm",
-                              "FlavorPureBottom",
-                              "JERScaleFactor"};//EDIT
+                              "FlavorPureBottom"*/};
 
 
   const char* updownNames[] = {"_UP_","_DOWN_"};
@@ -323,28 +319,22 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
   std::vector<std::string> sysUncSources(sysUncNames,std::end(sysUncNames));
   std::vector<std::string> updown(updownNames,std::end(updownNames));
 
-  /*if (factorisedJECsMC_.size() != factorisedJECsDATA_.size()){
+  //Loop over sources systematic uncertainty
+
+  if (factorisedJECsMC_.size() != factorisedJECsDATA_.size()){
     std::cout << "BJetness::WARNING: Crash imminent. Different number of factorised JEC uuncertainty sources for data and MC." << std::endl;
     std::cout << "BJetness:: WARNING: Check sources JECInitialisation method." <<std::endl;
-  }*/
+  }
 
   // Declare temp pointer to be initialised with each systematic uncertainty.
   boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC;
-  //boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA;
+  boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA;
 
   for (uint h=0; h<BJetnessValueJECSysts->size(); h++){
     (BJetnessValueJECSysts->at(h)).clear();
   }
-  BJetnessValueJECSysts->clear();
 
-  //========================================
-  //Loop over JEC uncertainty sources
-  //========================================
-  uint numSysts = sysUncSources.size();
-  if(_is_data){
-    numSysts=1;
-  }
-  for(uint i=0; i<numSysts; i++){
+  for(uint i=0; i<sysUncSources.size(); i++){
 
     uint updown_count;
     if (sysUncSources[i]=="Nominal"){
@@ -355,13 +345,14 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
     }
 
     for(uint k=0; k<updown_count; k++){
-      bJetnessVariables.clear();
+      bJetnessVariables->clear();
 
+      cout << "sysUncSource = " << sysUncSources[i] << " ; up/down count = " << updown_count << endl;
 
-
-      if (sysUncSources[i]!="Nominal" && sysUncSources[i]!="JERScaleFactor"){
+      if (sysUncSources[i]!="Nominal"){
+        //std::cout << sysUncSources.at(i-1) << std::endl;
         temp_JECUncMC = factorisedJECsMC_.at(i-1);
-        //temp_JECUncDATA = factorisedJECsDATA_.at(i-1);
+        temp_JECUncDATA = factorisedJECsDATA_.at(i-1);
       }
 
       /////
@@ -417,7 +408,6 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         bJetnessVariables.push_back(-999);
 
 
-        /*BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
@@ -435,17 +425,17 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
-        BJetnessValues->push_back(-999);*/
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
 
-        //////////////////////////////////////////
-        //cout << "Event from systematic variation "<< sysUncSources[i] << " failed vertex cuts." << endl;
-        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
         BJetnessValueJECSysts->push_back(bJetnessVariables);
-        //cout << "Put bJetness object into Event" << endl;
-        //iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
+        //////////////////////////////////////////
+        cout << "Event failed vertex cuts." << endl;
+        cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        cout << "Put bJetness object into Event" << endl;
+        iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
         //iEvent.put(BJetnessValues,"BJetnessValue");
-        //return; // skip the event if no PV found
-        continue;
+        return; // skip the event if no PV found
       }
       reco::VertexCollection::const_iterator firstgoodVertex = vtx_h->end();
       for(reco::VertexCollection::const_iterator it = vtx_h->begin(); it != firstgoodVertex; it++){
@@ -478,7 +468,6 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         bJetnessVariables.push_back(-999);
 
 
-        /*BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
@@ -496,17 +485,16 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
-        BJetnessValues->push_back(-999);*/
-
-        ////////////////////////////////////////////////
-        //cout << "Event from systematic variation "<< sysUncSources[i] << " failed first good vertex cut." << endl;
-        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
         BJetnessValueJECSysts->push_back(bJetnessVariables);
-        //cout << "Put bJetness object into Event" << endl;
-        //iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
+        ////////////////////////////////////////////////
+        cout << "Event failed first good vertex cut." << endl;
+        cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        cout << "Put bJetness object into Event" << endl;
+        iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
         //iEvent.put(BJetnessValues,"BJetnessValue");
-        //return;
-        continue;
+        return;
       }
       const reco::Vertex &PV = vtx_h->front(); //It still takes the first vertex
 
@@ -561,8 +549,7 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
 
         // temp_JECUnc's now needs to be copied into is_good_jet method so pointer to
         // JetCorrectionUncertainty points at memory block of relevant JEC unc. source.
-        //if(!is_good_jet(j,rhopog,rhoJER,vtxsize,iSetup,jetpt, temp_JECUncMC, temp_JECUncDATA, sysUncSources[i], updown[k])){jet_pos++; continue;}
-        if(!is_good_jet(j,rhopog,rhoJER,vtxsize,iSetup,jetpt, temp_JECUncMC, sysUncSources[i], updown[k])){jet_pos++; continue;}
+        if(!is_good_jet(j,rhopog,rhoJER,vtxsize,iSetup,jetpt, temp_JECUncMC, temp_JECUncDATA, sysUncSources[i], updown[k])){jet_pos++; continue;}
         bool jetmatchedlepts = false;
         for(uint gl=0; gl<looseleps.size(); gl++) if(deltaR(looseleps[gl]->p4(),j.p4())<0.4) jetmatchedlepts = true;
         if(jetmatchedlepts){jet_pos++; continue;}
@@ -574,7 +561,6 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         jet_pos++;
         jet_num++;
       }
-      //cout << "# jets = " << jet_num << endl;
       //=======================================================
 
       /////
@@ -606,7 +592,6 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         bJetnessVariables.push_back(-999);
 
 
-        /*BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
@@ -624,17 +609,16 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
-        BJetnessValues->push_back(-999);*/
-
-        ////////////////////////////////////////////////
-        //cout << "Event from systematic variation "<< sysUncSources[i] << " failed event selection." << endl;
-        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
         BJetnessValueJECSysts->push_back(bJetnessVariables);
-        //cout << "Put bJetness object into Event" << endl;
-        //iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
+        ////////////////////////////////////////////////
+        cout << "Event failed event selection." << endl;
+        cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        cout << "Put bJetness object into Event" << endl;
+        iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
         //iEvent.put(BJetnessValues,"BJetnessValue");
-        //return;
-        continue;
+        return;
       }
 
       /////
@@ -689,33 +673,33 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         //Fill the quantities for the event
 
         ///////////////////////////////////////////////////////////////
-        // # soft Bjetness leptons
+        //Num_of_trks
         bJetnessVariables.push_back(bjetnessFV_num_leps);
-        // # trks and pt of tracks PV vs. NPV ratios
         bJetnessVariables.push_back(bjetnessFV_npvTrkOVcollTrk);
         bJetnessVariables.push_back(bjetnessFV_pvTrkOVcollTrk);
         bJetnessVariables.push_back(bjetnessFV_npvTrkOVpvTrk);
         bJetnessVariables.push_back(bjetnessFV_npvPtOVcollPt);
         bJetnessVariables.push_back(bjetnessFV_pvPtOVcollPt);
         bJetnessVariables.push_back(bjetnessFV_npvPtOVpvPt);
-        // 3D Impact Parameter Variables
+
+        //ImpactParameter
         bJetnessVariables.push_back(bjetnessFV_avip3d_val);
         bJetnessVariables.push_back(bjetnessFV_avip3d_sig);
         bJetnessVariables.push_back(bjetnessFV_avsip3d_val);
         bJetnessVariables.push_back(bjetnessFV_avsip3d_sig);
-        // 2D Impact Parameter Variables
+
         bJetnessVariables.push_back(bjetnessFV_avip2d_val);
         bJetnessVariables.push_back(bjetnessFV_avip2d_sig);
         bJetnessVariables.push_back(bjetnessFV_avsip2d_val);
         bJetnessVariables.push_back(bjetnessFV_avsip2d_sig);
-        // 1D Impact Parameter Variables
+
         bJetnessVariables.push_back(bjetnessFV_avip1d_val);
         bJetnessVariables.push_back(bjetnessFV_avip1d_sig);
         bJetnessVariables.push_back(bjetnessFV_avsip1d_val);
         bJetnessVariables.push_back(bjetnessFV_avsip1d_sig);
 
 
-        /*BJetnessValues->push_back(bjetnessFV_num_leps);
+        BJetnessValues->push_back(bjetnessFV_num_leps);
         BJetnessValues->push_back(bjetnessFV_npvTrkOVcollTrk);
         BJetnessValues->push_back(bjetnessFV_pvTrkOVcollTrk);
         BJetnessValues->push_back(bjetnessFV_npvTrkOVpvTrk);
@@ -737,17 +721,16 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         BJetnessValues->push_back(bjetnessFV_avip1d_val);
         BJetnessValues->push_back(bjetnessFV_avip1d_sig);
         BJetnessValues->push_back(bjetnessFV_avsip1d_val);
-        BJetnessValues->push_back(bjetnessFV_avsip1d_sig);*/
+        BJetnessValues->push_back(bjetnessFV_avsip1d_sig);
 
         ///////////////////////////////////////////////////////////////
-        //cout << "Event passed." << endl;
-        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        cout << "Event passed." << endl;
+        cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
         BJetnessValueJECSysts->push_back(bJetnessVariables);
         ///////////////////////////////////////////////////////////////
 
       }else{//if(jet_num!=0)
 
-        /*BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
@@ -764,7 +747,8 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
         BJetnessValues->push_back(-999);
-        BJetnessValues->push_back(-999);*/
+        BJetnessValues->push_back(-999);
+        BJetnessValues->push_back(-999);
 
         bJetnessVariables.push_back(-999);
         bJetnessVariables.push_back(-999);
@@ -786,25 +770,25 @@ void BJetness::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
         bJetnessVariables.push_back(-999);
         bJetnessVariables.push_back(-999);
 
-        //cout << "Event from systematic variation "<< sysUncSources[i] << " failed due to number of jets < 4." << endl;
-        //cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
+        cout << "Event failed due to number of jets < 4." << endl;
+        cout << "Vector of bJetness vars. pushed into BJetnessValueJECSysts" << endl;
         BJetnessValueJECSysts->push_back(bJetnessVariables);
 
       }
     }// End of variation up/down loop.
   }//End of uncertainty source loop.
-  /*cout << "======= Final BJetnessValueJECSysts =======" << endl;
+  cout << "======= Final BJetnessValueJECSysts =======" << endl;
   cout << "No. JEC Systematics = " << BJetnessValueJECSysts->size() << endl;
   for (uint o=0; o<BJetnessValueJECSysts->size(); o++){
     cout << "=========== Systematic # " << o << " ==========" << endl;
     cout << "No. BJetness Variables = " << (BJetnessValueJECSysts->at(o)).size() << endl;
     for (uint p=0; p<(BJetnessValueJECSysts->at(o)).size(); p++){
-      cout << "=========== BJetness variable # " << p << " ==========" << (BJetnessValueJECSysts->at(o)).at(p) << " , ";
+      cout << "=========== BJetness variable # " << p << " ==========" << endl;
+      cout << (BJetnessValueJECSysts->at(o)).at(p) << endl;
     }
-    cout << " " << endl;
   }
   cout << "=====================================" << endl;
-  cout << "Put bJetness object into Event" << endl;*/
+  cout << "Put bJetness object into Event" << endl;
   iEvent.put(BJetnessValueJECSysts,"BJetnessValueJECSysts");
   //iEvent.put(BJetnessValues,"BJetnessValue");
 }
@@ -881,8 +865,7 @@ double BJetness::get_effarea(double eta){
 
 
 // Require good jets (according to TTHbb analysis)
-//bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double& jetpt, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC_, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA_, string sysUncSource_, string is_updown_){
-bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double& jetpt, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC_, string sysUncSource_, string is_updown_){
+bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxsize, const edm::EventSetup& iSetup, double& jetpt, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncMC_, boost::shared_ptr<JetCorrectionUncertainty> temp_JECUncDATA_, string sysUncSource_, string is_updown_){
 
   bool isgoodjet = true;
 
@@ -902,7 +885,7 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
     jecAK4PFchsMC_->setJetA( j.jetArea() );
     corrAK4PFchs = jecAK4PFchsMC_->getCorrection();
 
-    if(sysUncSource_!="Nominal" && sysUncSource_!="JERScaleFactor"){//EDIT
+    if(sysUncSource_!="Nominal"){
       if (is_updown_.find("_UP_") != std::string::npos) {
         temp_JECUncMC_->setJetEta( uncorrJetAK4PFchs.eta() );
         temp_JECUncMC_->setJetPt( corrAK4PFchs * uncorrJetAK4PFchs.pt() );
@@ -916,7 +899,6 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
     }
   }
   else {
-    //Only nominal needed for data (uncertainty already applied for MC).
     jecAK4PFchsDATA_->setJetEta( uncorrJetAK4PFchs.eta()    );
     jecAK4PFchsDATA_->setJetPt ( uncorrJetAK4PFchs.pt()     );
     jecAK4PFchsDATA_->setJetE  ( uncorrJetAK4PFchs.energy() );
@@ -925,7 +907,9 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
     jecAK4PFchsDATA_->setJetA  ( j.jetArea()         );
     corrAK4PFchs = jecAK4PFchsDATA_->getCorrection();
 
-    /*if(sysUncSource_!="Nominal" && sysUncSource_!="JERScaleFactor"){
+    //====================================Factorised JES===========================================
+
+    if(sysUncSource_!="Nominal"){
       if (is_updown_.find("_UP_") != std::string::npos) {
         temp_JECUncDATA_->setJetEta( uncorrJetAK4PFchs.eta() );
         temp_JECUncDATA_->setJetPt( corrAK4PFchs * uncorrJetAK4PFchs.pt() );
@@ -936,7 +920,7 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
         temp_JECUncDATA_->setJetPt( corrAK4PFchs * uncorrJetAK4PFchs.pt() );
         corrAK4PFchs_Unc = corrAK4PFchs * ( 1 - fabs(temp_JECUncDATA_->getUncertainty(-1)) );
       }
-    }*/
+    }
   }
 
   //Depending on whether the nominal or one of the systematics is running, select which weight (corrAK4PFchs_XXXXX) to use.
@@ -945,21 +929,10 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
   float JERScaleFactorDOWN = 1;
   if(!_is_data) GetJER(j, corrAK4PFchs, rhoJER, true, JERScaleFactor, JERScaleFactorUP, JERScaleFactorDOWN, iSetup);
 
-  if(_is_data && sysUncSource_!="Nominal"){
-    cout << "Should not be using JEC/JER SF sysetmatic variations for data!" << endl;
-  }
 
   //Acceptance
   if(sysUncSource_=="Nominal"){
     jetpt = (j.correctedJet("Uncorrected").pt()*corrAK4PFchs*JERScaleFactor);
-  }
-  else if(sysUncSource_=="JERScaleFactor"){
-    if(is_updown_.find("_UP_")){
-      jetpt = (j.correctedJet("Uncorrected").pt()*corrAK4PFchs*JERScaleFactorUP);
-    }
-    else if(is_updown_.find("_DOWN_")){
-      jetpt = (j.correctedJet("Uncorrected").pt()*corrAK4PFchs*JERScaleFactorDOWN);
-    }
   }
   else {
     jetpt = (j.correctedJet("Uncorrected").pt()*corrAK4PFchs_Unc*JERScaleFactor);
@@ -981,8 +954,7 @@ bool BJetness::is_good_jet(const pat::Jet &j,double rho, double rhoJER, int vtxs
 
   return isgoodjet;
 }
-//void BJetness::JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsMC, std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsDATA) {
-void BJetness::JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsMC) {
+void BJetness::JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsMC, std::vector<boost::shared_ptr<JetCorrectionUncertainty> > &factorisedJECsDATA) {
   // Procedure for running JEC and JECUnc on crab: https://twiki.cern.ch/twiki/bin/view/CMSPublic/WorkBookJetEnergyCorrections#JetEnCorFWLite
 
   //AK4chs - MC: Get the factorized jet corrector parameters.
@@ -1060,8 +1032,7 @@ void BJetness::JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUnce
   }
 
   jecAK4PFchsDATA_    = boost::shared_ptr<FactorizedJetCorrector>  ( new FactorizedJetCorrector(vParAK4PFchsDATA) );
-
-  /*jecAK4PFchsDATAUnc_ = boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "Total"))));
+  jecAK4PFchsDATAUnc_ = boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "Total"))));
   factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "Total")))));
   //=============================================================================
   //jecAK4PFchsDATAUnc_AbsoluteStat   = boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "AbsoluteStat"))));
@@ -1108,7 +1079,7 @@ void BJetness::JECInitialization(std::vector<boost::shared_ptr<JetCorrectionUnce
   factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureGluon")))));
   factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureQuark")))));
   factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureCharm")))));
-  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureBottom")))));*/
+  factorisedJECsDATA.push_back(boost::shared_ptr<JetCorrectionUncertainty>( new JetCorrectionUncertainty(*(new JetCorrectorParameters(jecPayloadNamesAK4PFchsDATAUnc_.fullPath(), "FlavorPureBottom")))));
   //=============================================================================
 
 }
@@ -1335,7 +1306,6 @@ void BJetness::get_bjetness_trkinfos(vector<pat::Jet> evtjets, const reco::Verte
 
     for(uint jd=0; jd<jdaus.size(); jd++){
       const pat::PackedCandidate &jcand = dynamic_cast<const pat::PackedCandidate &>(*jdaus[jd]);
-
       //dR requirement
       if(deltaR(jcand.p4(),jet.p4())>0.4) continue;
       Track trk = Track(jcand.pseudoTrack());
